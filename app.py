@@ -182,15 +182,22 @@ with tab1:
         gross = base + bas + bah + special_pay
         annual_gross = gross * 12
 
-        # Display Monthly and Annual
-        st.success(f"### 💰 Monthly Gross: ${gross:,.2f} &nbsp;&nbsp;|&nbsp;&nbsp; Annual: ${annual_gross:,.2f}")
+        # --- NEW DASHBOARD LAYOUT ---
+        col_monthly, col_annual = st.columns(2)
+        
+        with col_monthly:
+            st.info(f"### 🗓️ Monthly Gross\n# ${gross:,.2f}")
+            
+        with col_annual:
+            st.success(f"### 💰 Annual Gross\n# ${annual_gross:,.2f}")
+
+        st.write("") # Adds a little breathing room
 
         c_a, c_b, c_c, c_d = st.columns(4)
         c_a.metric("Base Pay", f"${base:,.2f}")
         c_b.metric("BAH (Tax-Free)", f"${bah:,.2f}")
         c_c.metric("BAS (Tax-Free)", f"${bas:,.2f}")
         c_d.metric("Special Pays", f"${special_pay:,.2f}")
-
 # --- TAB 2: RETIREMENT ---
 # --- TAB 2: RETIREMENT ---
 with tab2:
