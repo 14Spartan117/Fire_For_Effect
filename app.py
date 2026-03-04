@@ -170,11 +170,40 @@ with tab3:
         save_pct = (save_invest_total / take_home * 100) if take_home > 0 else 0
         st.metric("Total Invested", f"${save_invest_total:,.2f}", f"{save_pct:.1f}%")
 
-    with col_c:
+with col_c:
         st.subheader("🍹 Guilt-Free")
-        fun_total = st.number_input("Fun/Dining/Travel", value=take_home * 0.15)
+        
+        # Calculate exactly what they have left after Fixed and Savings
+        available_for_fun = take_home - fixed_total - save_invest_total
+        
+        if available_for_fun > 0:
+            st.success(f"**Available to allocate:** ${available_for_fun:,.2f}")
+        else:
+            st.error(f"**Available to allocate:** $0.00 (Check your fixed costs!)")
+            
+        st.write("Spend extravagantly on what you love, cut mercilessly on what you don't.")
+        
+        # Default distribution: spread 20% of take-home evenly to look clean
+        base_alloc = float(int((take_home * 0.20) / 6)) 
+        
+        experiences = st.number_input("Experiences (Travel, Concerts, Events)", value=base_alloc)
+        convenience = st.number_input("Convenience (Delivery, Rideshares, Time-savers)", value=base_alloc)
+        hobbies = st.number_input("Hobbies & Recreation (Gear, Gym, Gaming)", value=base_alloc)
+        personal = st.number_input("Personal / Lifestyle (Clothes, Grooming)", value=base_alloc)
+        entertainment = st.number_input("Entertainment (Dining Out, Bars, Movies)", value=base_alloc)
+        generosity = st.number_input("Generosity (Gifts, Donations, Tipping well)", value=base_alloc)
+        
+        fun_total = experiences + convenience + hobbies + personal + entertainment + generosity
         fun_pct = (fun_total / take_home * 100) if take_home > 0 else 0
-        st.metric("Guilt-Free Total", f"${fun_total:,.2f}", f"{fun_pct:.1f}%")
+        
+        st.divider()
+        
+        # Warning flag if they allocate more than they actually have left
+        if fun_total > available_for_fun:
+            st.metric("Guilt-Free Total", f"${fun_total:,.2f}", f"{fun_pct:.1f}%", delta_color="inverse")
+            st.warning("⚠️ You've allocated more Guilt-Free money than you have available!")
+        else:
+            st.metric("Guilt-Free Total", f"${fun_total:,.2f}", f"{fun_pct:.1f}%", delta_color="normal")
 
     # --- PHASE 0 UPDATE: WATERFALL CHART ---
     st.divider()
@@ -344,3 +373,4 @@ I Will Teach You To Be Rich - Ramit Sethi on spending intentionally and building
 
 </div>
 """, unsafe_allow_html=True)
+
