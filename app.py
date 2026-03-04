@@ -60,6 +60,7 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🧠 FinLit Quiz", "🗺️ Action Plan", "📬 Feedback & AAR"
 ])
 
+
 # --- TAB 1: INCOME ---
 with tab1:
     st.header("Step 1: Calculate Your 2026 Pay")
@@ -82,21 +83,32 @@ with tab1:
         c_c.metric("BAS (Tax-Free)", f"${bas:,.2f}")
 
 # --- TAB 2: RETIREMENT ---
+# --- TAB 2: RETIREMENT ---
 with tab2:
     st.header("Step 2: Retirement & Pension Target")
+    st.info("💡 **Reality Check:** This is a goal-setting tool to determine how much you need to save to hit your target income. It is not a crystal ball for exact market returns.")
+    
     col_l, col_r = st.columns(2)
     with col_l:
         st.subheader("The Career Timeline")
         retire_system = st.radio("Retirement System", ["BRS (2.0%)", "Legacy / High-3 (2.5%)"], horizontal=True)
         multiplier = 0.02 if "BRS" in retire_system else 0.025
+        
+        # PHASE 0 UPDATE: Expected Retirement Rank (Defaults to E-7)
+        retire_rank = st.selectbox("Expected Rank at Retirement", CONFIG["ranks"], index=6)
+        
         current_age = st.slider("Current Age", 18, 60, 25)
         yrs_at_retire = st.slider("Total Years of Service at Retirement", 20, 40, 20)
         age_at_retire = st.slider("Age when you stop working", 38, 75, 60)
+        
     with col_r:
         st.subheader("Current Assets & Goals")
         current_tsp = st.number_input("Current Value of TSP/IRAs ($)", value=10000, step=1000)
         monthly_goal = st.number_input("Total Desired Monthly Income ($)", value=8000, step=500)
-        est_pension = st.session_state.base_pay * (yrs_at_retire * multiplier)
+        
+        # PHASE 0 UPDATE: Pension uses projected rank & TIS, acting as a High-3 proxy
+        retire_base, _, _ = get_military_pay(retire_rank, yrs_at_retire, "92136", False) 
+        est_pension = retire_base * (yrs_at_retire * multiplier)
         st.metric("Projected Monthly Pension", f"${est_pension:,.2f}")
 
     years_to_grow = age_at_retire - current_age
@@ -108,14 +120,24 @@ with tab2:
         r, n = 0.07 / 12, years_to_grow * 12
         required_pmt = (final_funding_gap * r) / (((1 + r) ** n) - 1) if final_funding_gap > 0 else 0.0
         st.session_state.pmt_target = required_pmt
+        
         st.divider()
         res_col1, res_col2, res_col3 = st.columns(3)
         res_col1.metric("Goal Nest Egg", f"${total_nest_egg_needed:,.0f}")
         res_col2.metric("Future Value", f"${fv_current_savings:,.0f}")
         res_col3.metric("Required Investment", f"${required_pmt:,.2f}", delta="Sent to Budget")
+        
+        # PHASE 0 UPDATE: Assumptions Footprint
+        with st.expander("🔍 See the Math & Assumptions"):
+            st.markdown("""
+            * **Pension Base:** Uses the 2026 Base Pay for your expected Retirement Rank and TIS (acts as a High-3 proxy).
+            * **The 4% Rule:** Assumes a safe withdrawal rate of 4% per year in retirement to ensure your portfolio survives.
+            * **Market Growth:** Assumes an inflation-adjusted (real) return of **7% annually** on your current and future investments.
+            * **Taxes & Inflation:** All calculations are presented in today's pre-tax, real dollars to keep your baseline target clear and actionable.
+            """)
     else:
         st.error("Retirement age must be in the future.")
-
+# --- TAB 3: CONSCIOUS SPENDING ---
 # --- TAB 3: CONSCIOUS SPENDING ---
 with tab3:
     st.header("Step 3: Conscious Spending Plan")
@@ -124,7 +146,7 @@ with tab3:
         take_home = st.number_input("Monthly Net Take-Home", value=5000.0)
     else:
         take_home = (st.session_state.base_pay * 0.78) + st.session_state.bas_amt + st.session_state.bah_amt
-    st.info(f"Estimated Monthly Take-Home: **\\${take_home:,.2f}**")
+    st.info(f"Estimated Monthly Take-Home: **${take_home:,.2f}**")
     
     st.divider()
     col_a, col_b, col_c = st.columns(3)
@@ -154,20 +176,46 @@ with tab3:
         fun_pct = (fun_total / take_home * 100) if take_home > 0 else 0
         st.metric("Guilt-Free Total", f"${fun_total:,.2f}", f"{fun_pct:.1f}%")
 
-    # --- Chart ---
-    chart_df = pd.DataFrame({
-        'Category': ['Fixed Costs', 'Invest/Save', 'Guilt-Free'],
-        'Actual %': [fixed_pct, save_pct, fun_pct],
-        'Ideal Target %': [60, 20, 20]
-    })
-    st.subheader("Budget Utilization vs. Conscious Spending Ideals")
-    c = alt.Chart(chart_df).mark_bar().encode(
-        x=alt.X('Category', sort=None),
-        y=alt.Y('Actual %', scale=alt.Scale(domain=[0, 100])),
-        color=alt.Color('Category', scale=alt.Scale(range=['#e74c3c', '#2ecc71', '#3498db']))
-    )
-    st.altair_chart(c, use_container_width=True)
+    # --- PHASE 0 UPDATE: WATERFALL CHART ---
+    st.divider()
+    st.subheader("Budget Flow (The Waterfall)")
+    
+    if take_home > 0:
+        # Calculate the stepping stones for the waterfall
+        step1_end = take_home - fixed_total
+        step2_end = step1_end - save_invest_total
+        step3_end = step2_end - fun_total
+        
+        waterfall_data = pd.DataFrame({
+            'Category': ['1. Take-Home', '2. Fixed Costs', '3. Invest/Save', '4. Guilt-Free'],
+            'Amount': [take_home, -fixed_total, -save_invest_total, -fun_total],
+            'Start': [0, take_home, step1_end, step2_end],
+            'End': [take_home, step1_end, step2_end, step3_end]
+        })
 
+        # Build the Altair chart
+        c = alt.Chart(waterfall_data).mark_bar(size=40).encode(
+            x=alt.X('Category:N', sort=None, title=None, axis=alt.Axis(labelAngle=0)),
+            y=alt.Y('Start:Q', title="Monthly Dollars ($)"),
+            y2='End:Q',
+            color=alt.condition(
+                alt.datum.Amount > 0,
+                alt.value('#2ecc71'),  # Green for positive income
+                alt.value('#e74c3c')   # Red for expense deductions
+            ),
+            tooltip=['Category', 'Amount']
+        ).properties(height=350)
+        
+        st.altair_chart(c, use_container_width=True)
+        
+        # Quick sanity check output for the user
+        remainder = take_home - (fixed_total + save_invest_total + fun_total)
+        if remainder >= 0:
+            st.success(f"✅ You have a monthly surplus of **${remainder:,.2f}**. You are living within your means.")
+        else:
+            st.error(f"🚨 Warning: You are overspending by **${abs(remainder):,.2f}** a month. Adjust your inputs.")
+    else:
+        st.info("Enter your income in Tab 1 to generate your budget waterfall.")
 # --- TAB 4: FINLIT QUIZ ---
 with tab4:
     st.header("Step 4: Financial Readiness Quiz")
@@ -261,3 +309,38 @@ with tab6:
     </form>
     """
     st.markdown(contact_form, unsafe_allow_html=True)
+
+# --- GLOBAL FOOTER & DISCLAIMER ---
+st.markdown("---")
+
+st.markdown("""
+<div style='text-align: center; font-size: 0.85em; color: gray;'>
+
+<b>Disclaimer:</b> This tool is for educational purposes only and uses simplified assumptions (like a constant real return). I am not a financial advisor. But financial literacy isn’t reserved for people with CFP after their name. Take charge of your money and take responsibility for your future—it’s one of the few investments guaranteed to pay dividends.
+
+<br><br>
+
+<b>For Further Reading:</b><br><br>
+
+<a href='https://www.reddit.com/r/personalfinance/' target='_blank' style='color: gray; text-decoration: none;'>
+r/personalfinance - The internet's group chat for "Is this a terrible financial decision?"
+</a><br>
+
+<a href='https://www.reddit.com/r/MilitaryFinance/' target='_blank' style='color: gray; text-decoration: none;'>
+r/MilitaryFinance - Where troops compare BAH strategies and warn each other about 24% APR Mustangs
+</a><br>
+
+<a href='https://militaryfinancialindependence.com/' target='_blank' style='color: gray; text-decoration: none;'>
+The Military Guide - Doug Nordman's legendary playbook for military financial independence
+</a><br>
+
+<a href='https://www.mrmoneymustache.com/blog/' target='_blank' style='color: gray; text-decoration: none;'>
+Mr. Money Mustache - Aggressively anti-lifestyle-inflation and surprisingly entertaining
+</a><br>
+
+<a href='https://www.iwillteachyoutoberich.com/' target='_blank' style='color: gray; text-decoration: none;'>
+I Will Teach You To Be Rich - Ramit Sethi on spending intentionally and building wealth
+</a>
+
+</div>
+""", unsafe_allow_html=True)
