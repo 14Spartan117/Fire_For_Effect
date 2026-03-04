@@ -396,77 +396,78 @@ with tab3:
         else:
             st.metric("Guilt-Free Total", f"${fun_total:,.2f}", f"{fun_pct:.1f}%", delta_color="normal")
 
-    # --- SANKEY DIAGRAM ---
-    st.divider()
-    st.subheader("Budget Flow (The River of Money)")
-    
-    if take_home > 0:
-        remainder = take_home - (fixed_total + save_invest_total + fun_total)
-        
-        labels = [
-            "Take-Home Pay",      # 0
-            "Fixed Costs",        # 1
-            "Invest & Save",      # 2
-            "Guilt-Free Fun",     # 3
-            "Housing", "Trans", "Health", "Groceries", # 4, 5, 6, 7
-            "Retirement", "Emergency",                 # 8, 9
-            "Experiences", "Convenience", "Hobbies", "Personal", "Entertainment", "Generosity", # 10-15
-            "Surplus (Unallocated)" # 16
-        ]
+# --- TAB 3: CASH FLOW CALCULATIONS (REPAIRED) ---
 
-        source = []
-        target = []
-        value = []
-
-        # 1. Level 1
-        source.extend([0, 0, 0])
-        target.extend([1, 2, 3])
-        value.extend([fixed_total, save_invest_total, fun_total])
-
-        if remainder > 0:
-            source.append(0)
-            target.append(16)
-            value.append(remainder)
-
-        # 2. Level 2: Fixed Costs
-        source.extend([1, 1, 1, 1])
-        target.extend([4, 5, 6, 7])
-        value.extend([housing, trans, health, groceries])
-
-        # 3. Level 2: Invest/Save
-        source.extend([2, 2])
-        target.extend([8, 9])
-        value.extend([retirement, emergency])
-
-        # 4. Level 2: Guilt-Free
-        source.extend([3, 3, 3, 3, 3, 3])
-        target.extend([10, 11, 12, 13, 14, 15])
-        value.extend([experiences, convenience, hobbies, personal, entertainment, generosity])
-
-        fig = go.Figure(data=[go.Sankey(
-            node = dict(
-              pad = 15,
-              thickness = 20,
-              line = dict(color = "black", width = 0.5),
-              label = labels,
-              color = "rgba(44, 62, 80, 0.8)" 
-            ),
-            link = dict(
-              source = source,
-              target = target,
-              value = value,
-              color = "rgba(189, 195, 199, 0.4)" 
-          ))])
-        
-        fig.update_layout(height=500, font_size=12, margin=dict(l=0, r=0, t=20, b=20))
-        st.plotly_chart(fig, use_container_width=True)
-        
-        if remainder >= 0:
-            st.success(f"✅ You have a monthly surplus of **${remainder:,.2f}**. You are living within your means.")
-        else:
-            st.error(f"🚨 Warning: You are overspending by **${abs(remainder):,.2f}** a month. Your diagram will show more money leaving than entering!")
+    # 1. Calculate Taxes for the Sankey Flow
+    if "Manual Entry" in pay_mode:
+        sankey_tax = take_home * 0.15 
+        sankey_gross = take_home + sankey_tax
     else:
-        st.info("Enter your income in Tab 1 to generate your interactive budget visualization.")
+        sankey_tax = monthly_fed_tax + monthly_fica
+        sankey_gross = mil_taxable + total_extra_income + mil_nontaxable
+
+    # 2. Map variables (fixed_total, save_invest_total, and fun_total are already defined in your code)
+    invest_total = save_invest_total 
+    guilt_free_total = fun_total
+    surplus_amt = take_home - (fixed_total + invest_total + guilt_free_total)
+
+    st.divider()
+    st.subheader("📊 Your 2026 Monthly Cash Flow Architecture")
+
+    import plotly.graph_objects as go
+
+    # 3. Define Nodes and Links
+    nodes = ["Gross Income", "Taxes", "Take-Home Pay", "Fixed Costs", "Investments", "Guilt-Free", "Surplus"]
+
+    links = {
+        "source": [0, 0, 2, 2, 2, 2],
+        "target": [1, 2, 3, 4, 5, 6],
+        "value": [
+            max(0.1, sankey_tax),      
+            max(0.1, take_home),       
+            max(0.1, fixed_total),     
+            max(0.1, invest_total),    
+            max(0.1, guilt_free_total),
+            max(0.1, surplus_amt)      
+        ],
+        "color": [
+            "rgba(200, 200, 200, 0.4)", # Taxes
+            "rgba(0, 212, 255, 0.4)",   # Take-Home
+            "rgba(255, 99, 132, 0.5)",  # Fixed
+            "rgba(75, 192, 192, 0.5)",  # Invest
+            "rgba(255, 206, 86, 0.5)",  # Guilt-Free
+            "rgba(0, 255, 127, 0.7)"    # Surplus
+        ]
+    }
+
+    # 4. Create Figure (Removed 'font' from node dict)
+    fig = go.Figure(data=[go.Sankey(
+        node=dict(
+            pad=15, 
+            thickness=20, 
+            label=nodes, 
+            color="#00D4FF"
+        ),
+        link=links
+    )])
+
+    # 5. Global Styling (Font goes here!)
+    fig.update_layout(
+        font=dict(color="white", size=12),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        template="plotly_dark",
+        height=600,
+        margin=dict(l=10, r=10, t=40, b=10)
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Surplus/Deficit Messages
+    if surplus_amt < -5:
+        st.error(f"⚠️ **Budget Deficit:** You are over-allocated by **${abs(surplus_amt):,.2f}**.")
+    elif surplus_amt > 5:
+        st.success(f"✅ **Budget Surplus:** You have **${surplus_amt:,.2f}** unallocated.")
 # --- TAB 4: FINLIT QUIZ ---
 # --- TAB 4: FINANCIAL READINESS QUIZ ---
 with tab4:
