@@ -577,10 +577,149 @@ with tab2:
             f"[here's a good place to start](https://www.investopedia.com/terms/t/timevalueofmoney.asp)."
         )
 
+        # ── Interactive Savings Rate Explorer ────────────────────────────────
+        st.divider()
+        st.subheader("🎯 Savings Rate Explorer")
+        st.caption("Drag the slider to see how your savings rate affects your portfolio growth and the age at which you hit your goal. Uses your projected income schedule and expected real return.")
+
+        explore_pct = st.slider(
+            "Savings Rate (% of Base Pay)",
+            min_value=0.0, max_value=60.0,
+            value=float(round(savings_pct * 100, 1)),
+            step=0.5,
+            key="explorer_slider"
+        )
+
+        # Build deterministic growth curve for the explorer rate
+        explore_rate = explore_pct / 100.0
+        monthly_real = (1 + expected_real_rate) ** (1/12) - 1
+
+        # Full income schedule (military + civilian phases)
+        full_income = list(base_pay_schedule)
+        for _ in range(total_months - len(base_pay_schedule)):
+            full_income.append(civilian_monthly)
+        full_income = full_income[:total_months]
+
+        # Simulate deterministic portfolio growth
+        balance = float(current_tsp)
+        ages = []
+        balances = []
+        goal_age = None
+
+        for m in range(total_months):
+            age_now = current_age + m / 12.0
+            contrib = explore_rate * full_income[m] if m < len(full_income) else 0.0
+            balance = balance * (1 + monthly_real) + contrib
+            ages.append(age_now)
+            balances.append(balance)
+            if goal_age is None and balance >= total_nest_egg_needed:
+                goal_age = age_now
+
+        # Build Plotly figure
+        import plotly.graph_objects as go_ret
+        fig_exp = go_ret.Figure()
+
+        # Growth curve
+        fig_exp.add_trace(go_ret.Scatter(
+            x=ages, y=balances,
+            mode='lines',
+            name='Portfolio Growth',
+            line=dict(color='#00b4d8', width=2.5),
+            hovertemplate='Age %{x:.1f}: $%{y:,.0f}<extra></extra>'
+        ))
+
+        # Horizontal dashed line — nest egg target
+        fig_exp.add_hline(
+            y=total_nest_egg_needed,
+            line_dash="dash", line_color="#ef476f", line_width=1.5,
+            annotation_text=f"Target: ${total_nest_egg_needed:,.0f}",
+            annotation_position="top left",
+            annotation_font_color="#ef476f"
+        )
+
+        # Vertical dashed line + annotation at intersection
+        if goal_age is not None and goal_age <= age_at_retire:
+            fig_exp.add_vline(
+                x=goal_age,
+                line_dash="dash", line_color="#06d6a0", line_width=1.5,
+            )
+            fig_exp.add_annotation(
+                x=goal_age,
+                y=total_nest_egg_needed,
+                text=f"  Goal met at age {goal_age:.1f}",
+                showarrow=True,
+                arrowhead=2,
+                arrowcolor="#06d6a0",
+                font=dict(color="#06d6a0", size=12),
+                bgcolor="rgba(0,0,0,0.6)",
+                bordercolor="#06d6a0",
+                borderwidth=1,
+                ax=40, ay=-40
+            )
+        else:
+            fig_exp.add_annotation(
+                x=ages[len(ages)//2],
+                y=max(balances) * 0.5,
+                text="Goal not reached within timeframe — increase savings rate",
+                showarrow=False,
+                font=dict(color="#ef476f", size=12),
+                bgcolor="rgba(0,0,0,0.6)"
+            )
+
+        fig_exp.update_layout(
+            plot_bgcolor='#0e1117',
+            paper_bgcolor='#0e1117',
+            font=dict(color='#fafafa'),
+            height=350,
+            margin=dict(l=60, r=30, t=30, b=50),
+            xaxis=dict(
+                title='Age',
+                gridcolor='#2a2a3e',
+                zerolinecolor='#2a2a3e',
+            ),
+            yaxis=dict(
+                title='Portfolio Value ($)',
+                gridcolor='#2a2a3e',
+                zerolinecolor='#2a2a3e',
+                tickformat='$,.0f'
+            ),
+            legend=dict(
+                bgcolor='rgba(0,0,0,0)',
+                font=dict(color='#fafafa')
+            ),
+            showlegend=True
+        )
+
+        st.plotly_chart(fig_exp, use_container_width=True)
+
         # ── Monte Carlo ───────────────────────────────────────────────────────
         st.divider()
         st.subheader("🎲 Monte Carlo Projection (1,000 Trials)")
-        st.caption("Each gray line is one possible future. The market doesn't move in a straight line — two people doing everything right can end up with very different results based purely on timing and luck. That's exactly the point.")
+        st.markdown("""
+You've now decided how much you make, how much you want in retirement, how much you need to save, 
+and your allocation and risk tolerance. The explorer above shows you when you can retire and what 
+it takes to get there — using average expected returns.
+
+**But that's not real life.**
+
+Average returns are a smooth line drawn through decades of chaos. They don't show the crash you'll 
+retire into, the year your portfolio drops 40% right when you were about to stop working, or the 
+decade where nothing happens and you start to doubt the whole plan. Investing has risk — and the 
+average hides all of it.
+
+**Get ready for real life.**
+
+Each gray line below is one possible future. The market doesn't move in a straight line — two people 
+doing everything right can end up with very different results based purely on timing and luck. 
+That's exactly the point. There will be highs. There will be lows. You will watch your balance drop 
+and every instinct will tell you to do something. Don't. You made a plan — now execute it.
+
+And guard yourself against anyone who claims they have a cheat code, a fast lane, or a guaranteed 
+return. Especially guard yourself against people who tell you about their wins — because those people 
+will never tell you about their losses.
+
+*May the odds be ever in your favor.*
+        """)
 
         if st.button("Run Simulation", type="primary"):
             with st.spinner("Running 1,000 trials..."):
