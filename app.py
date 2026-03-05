@@ -148,7 +148,6 @@ def get_military_pay(rank, tis, zip_code, has_dep):
         dep_key = "with" if has_dep else "without"
         bah = DATA.get("bah_rates", {}).get(mha_code, {}).get(rank, {}).get(dep_key, 0.0)
     return float(base), float(bas), float(bah)
-
 # --- 3. UI LAYOUT ---
 st.title("🎖️ 2026 Military Reality Check")
 st.markdown("---")
@@ -745,3 +744,4 @@ st.markdown("""
 <b>Disclaimer:</b> This tool is for educational purposes only and uses simplified assumptions (like a constant real return). I am not a financial advisor. But financial literacy isn’t reserved for people with CFP after their name. Take charge of your money and take responsibility for your future—it’s one of the few investments guaranteed to pay dividends.
 </div>
 """, unsafe_allow_html=True)
+
