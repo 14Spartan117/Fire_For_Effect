@@ -536,14 +536,44 @@ with tab2:
         st.session_state.nest_egg_target = total_nest_egg_needed
         st.session_state.est_pension = est_pension
 
+        current_base = get_base_pay(start_rank, start_tis)
+        monthly_dollar_equiv = savings_pct * current_base
+
         st.divider()
-        r1, r2, r3, r4 = st.columns(4)
-        r1.metric("Target Nest Egg (Real $)",   f"${total_nest_egg_needed:,.0f}")
-        r2.metric("Blended Nominal Return",      f"{expected_nom * 100:.2f}%")
-        r3.metric("Real Return (After Inflation)",f"{expected_real_rate * 100:.2f}%")
-        r4.metric("📌 Required Savings Rate",
-                  f"{savings_pct * 100:.1f}% of Base Pay",
-                  delta="Enter this % directly in MyPay")
+        r1, r2, r3 = st.columns(3)
+        r1.metric("Target Nest Egg (Real $)",    f"${total_nest_egg_needed:,.0f}")
+        r2.metric("Blended Nominal Return",       f"{expected_nom * 100:.2f}%")
+        r3.metric("Real Return (After Inflation)", f"{expected_real_rate * 100:.2f}%")
+
+        st.divider()
+        m1, m2 = st.columns(2)
+        m1.metric(
+            "📌 Required Savings Rate",
+            f"{savings_pct * 100:.1f}% of Base Pay",
+            delta="Enter this % directly in MyPay"
+        )
+        m2.metric(
+            "Today's Dollar Equivalent",
+            f"${monthly_dollar_equiv:,.2f} / month",
+            delta="Starting point only — see note below",
+            delta_color="off"
+        )
+
+        st.info(
+            f"**Why the percentage matters more than the dollar amount.**\n\n"
+            f"Saving a fixed ${monthly_dollar_equiv:,.0f}/month sounds straightforward — but inflation quietly "
+            f"erodes its purchasing power every year. By the time you retire, that same "
+            f"${monthly_dollar_equiv:,.0f} buys significantly less than it does today. The percentage of base pay "
+            f"automatically scales up with every promotion and pay raise, keeping your contributions "
+            f"aligned with the real cost of your future. That's why the % is the number that matters.\n\n"
+            f"Because military pay is relatively predictable throughout your career, it is possible to "
+            f"calculate a single percentage of your base pay that will keep you on track from now until "
+            f"the day you hang up the uniform. Set it once. Let promotions and pay raises do the rest.\n\n"
+            f"However — the moment you transition to civilian life, this percentage changes. Your civilian "
+            f"salary is a different animal that this tool cannot predict. When you separate, revisit this "
+            f"plan with your actual salary and recalculate the savings rate required to stay on track. "
+            f"Do not assume the military percentage carries over."
+        )
 
         # ── Monte Carlo ───────────────────────────────────────────────────────
         st.divider()
@@ -720,18 +750,16 @@ with tab3:
         st.subheader("🍹 Guilt-Free")
         available_for_fun = take_home - fixed_total - save_invest_total
 
-        base_alloc = float(int((take_home * 0.20) / 6))
+        experiences  = st.number_input("Experiences (Travel, Events)",        min_value=0.0, value=0.0, step=50.0)
+        convenience  = st.number_input("Convenience (Delivery, Time-savers)", min_value=0.0, value=0.0, step=50.0)
+        hobbies      = st.number_input("Hobbies (Gear, Gym, Gaming)",          min_value=0.0, value=0.0, step=50.0)
+        personal     = st.number_input("Personal (Clothes, Grooming)",         min_value=0.0, value=0.0, step=50.0)
+        entertainment= st.number_input("Entertainment (Dining Out, Bars)",     min_value=0.0, value=0.0, step=50.0)
+        generosity   = st.number_input("Generosity (Gifts, Donations)",        min_value=0.0, value=0.0, step=50.0)
 
-        experiences  = st.number_input("Experiences (Travel, Events)",      value=base_alloc)
-        convenience  = st.number_input("Convenience (Delivery, Time-savers)", value=base_alloc)
-        hobbies      = st.number_input("Hobbies (Gear, Gym, Gaming)",        value=base_alloc)
-        personal     = st.number_input("Personal (Clothes, Grooming)",       value=base_alloc)
-        entertainment= st.number_input("Entertainment (Dining Out, Bars)",   value=base_alloc)
-        generosity   = st.number_input("Generosity (Gifts, Donations)",      value=base_alloc)
-
-        fun_total  = experiences + convenience + hobbies + personal + entertainment + generosity
-        fun_pct    = (fun_total / take_home * 100) if take_home > 0 else 0
-        remaining  = available_for_fun - fun_total
+        fun_total = experiences + convenience + hobbies + personal + entertainment + generosity
+        fun_pct   = (fun_total / take_home * 100) if take_home > 0 else 0
+        remaining = available_for_fun - fun_total
 
         st.divider()
         if remaining > 0:
