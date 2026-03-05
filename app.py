@@ -921,12 +921,24 @@ with tab3:
 
     special_pay = st.session_state.get("special_pay", 0.0)
 
-    # ── LES Form ─────────────────────────────────────────────────────────────
-    st.subheader("🗂️ Leave & Earnings Statement")
-    st.caption(
-        "Enter the values directly from your LES. This is the most accurate way to know what you actually take home. "
-        "Pull up your LES at [myPay](https://mypay.dfas.mil) and follow along line by line."
+    pay_mode = st.radio(
+        "Income Mode",
+        [
+            "📋 Using my LES values above",
+            "🎲 I'll skip the LES and let an algorithm guess my take-home pay—even though it knows nothing about my deductions, allotments, or tax situation. Honestly, it'll fit right in with the rest of my planning: assumptions, hopes, and vibes."
+        ],
+        key="pay_mode_radio"
     )
+
+    st.divider()
+
+    # ── LES Form ─────────────────────────────────────────────────────────────
+    if "📋" in pay_mode:
+        st.subheader("🗂️ Leave & Earnings Statement")
+        st.caption(
+            "Enter the values directly from your LES. This is the most accurate way to know what you actually take home. "
+            "Pull up your LES at [myPay](https://mypay.dfas.mil) and follow along line by line."
+        )
 
     les_col1, les_col2, les_col3 = st.columns(3)
 
@@ -1033,17 +1045,29 @@ with tab3:
         eom_pay     = les_tot_ent - les_tot_ded - les_tot_almt
         mil_takehome = les_midmonth + max(0.0, eom_pay)
 
-        st.metric("TOT ENT",  f"${les_tot_ent:,.2f}")
+        st.metric("TOT ENT",   f"${les_tot_ent:,.2f}")
         st.metric("– TOT DED", f"${les_tot_ded:,.2f}")
         st.metric("– TOT ALMT",f"${les_tot_almt:,.2f}")
         st.metric("= EOM PAY", f"${max(0.0, eom_pay):,.2f}")
 
-    st.info(
-        f"**Mid-Month Pay (${les_midmonth:,.2f}) + EOM Pay (${max(0.0,eom_pay):,.2f}) "
-        f"= Total Military Take-Home: ${mil_takehome:,.2f}/month.**\n\n"
-        f"Your LES EOM Pay is only the *second half* of your monthly pay — the mid-month deposit already "
-        f"hit your account on the 15th. Both deposits together are your actual military take-home."
-    )
+    # ── LES summary info or fallback ─────────────────────────────────────────
+    if "📋" in pay_mode:
+        st.info(
+            f"**Mid-Month Pay (${les_midmonth:,.2f}) + EOM Pay (${max(0.0,eom_pay):,.2f}) "
+            f"= Total Military Take-Home: ${mil_takehome:,.2f}/month.**\n\n"
+            f"Your LES EOM Pay is only the *second half* of your monthly pay — the mid-month deposit already "
+            f"hit your account on the 15th. Both deposits together are your actual military take-home."
+        )
+    else:
+        # Fallback values for 🎲 path — LES form was skipped
+        les_midmonth = 0.0
+        eom_pay      = 0.0
+        mil_takehome = 0.0
+        les_fed_tax  = 0.0
+        les_fica_ss  = 0.0
+        les_fica_med = 0.0
+        les_state    = 0.0
+        les_tot_ent  = 0.0
 
     st.divider()
 
@@ -1075,17 +1099,6 @@ with tab3:
     st.divider()
 
     # ── Take-Home Anchor ──────────────────────────────────────────────────────
-    take_home = mil_takehome + total_extra_income
-
-    pay_mode = st.radio(
-        "Income Mode",
-        [
-            "📋 Using my LES values above",
-            "🎲 I'll skip the LES and let an algorithm guess my take-home pay—even though it knows nothing about my deductions, allotments, or tax situation. Honestly, it'll fit right in with the rest of my planning: assumptions, hopes, and vibes."
-        ],
-        key="pay_mode_radio"
-    )
-
     if "🎲" in pay_mode:
         mil_taxable    = st.session_state.base_pay + special_pay
         mil_nontaxable = st.session_state.bah_amt + st.session_state.bas_amt
@@ -1106,6 +1119,8 @@ with tab3:
         monthly_fica    = taxable_monthly * 0.0765
         take_home = taxable_monthly - monthly_fed_tax - monthly_fica + mil_nontaxable + total_extra_income
         st.caption(f"*Estimated Taxes: Federal **${monthly_fed_tax:,.0f}** | FICA **${monthly_fica:,.0f}** — BAH/BAS excluded from tax. Your actual deductions will differ.*")
+    else:
+        take_home = mil_takehome + total_extra_income
 
     st.info(f"💰 Total Combined Monthly Take-Home: **${take_home:,.2f}**")
     st.divider()
