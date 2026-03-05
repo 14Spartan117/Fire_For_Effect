@@ -1197,7 +1197,7 @@ with tab7:
             section_header("YOUR WAY FORWARD")
             pdf.set_font("Helvetica", "", 9)
             pdf.set_x(15)
-            pdf.multi_cell(0, 5, safe(way_forward))
+            pdf.multi_cell(180, 5, safe(way_forward))
             pdf.ln(2)
 
             # Priority actions
@@ -1219,16 +1219,18 @@ with tab7:
                 ]
             for i, action in enumerate(actions, 1):
                 pdf.set_font("Helvetica", "B", 9)
+                pdf.set_x(15)
                 pdf.cell(8, 5, f"{i}.", ln=False)
                 pdf.set_font("Helvetica", "", 9)
-                pdf.multi_cell(0, 5, safe(action))
+                pdf.multi_cell(167, 5, safe(action))
+                pdf.set_x(15)
 
             pdf.ln(3)
 
             # Footer disclaimer
             pdf.set_font("Helvetica", "I", 7)
             pdf.set_text_color(120, 120, 120)
-            pdf.multi_cell(0, 4, safe(
+            pdf.multi_cell(180, 4, safe(
                 "This document is for educational purposes only. Projections use simplified assumptions including "
                 "primary-zone promotion timelines, historical TSP fund return averages, and a 4% safe withdrawal rate. "
                 "Actual results will vary. Consult a Certified Financial Planner for personalized advice."))
