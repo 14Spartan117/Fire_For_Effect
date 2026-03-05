@@ -329,7 +329,7 @@ with tab1:
 
     col1, col2 = st.columns(2)
     with col1:
-        rank = st.selectbox("Current Rank", CONFIG["ranks"], index=4)
+        rank = st.selectbox("Current Rank", CONFIG["ranks"], index=4, key="tab1_rank_widget")
         tis = st.number_input("Years of Service (TIS)", 0, 40, 4)
     with col2:
         zip_code = st.text_input("Duty Station Zip Code", "92136")
@@ -446,7 +446,7 @@ with tab2:
         # Pull current rank/TIS from Tab 1 session state if available
         default_rank_idx = CONFIG["ranks"].index(st.session_state.get("tab1_rank", "O-3")) \
             if st.session_state.get("tab1_rank") in CONFIG["ranks"] else 18
-        start_rank = st.selectbox("Current Rank", CONFIG["ranks"], index=default_rank_idx)
+        start_rank = st.selectbox("Current Rank", CONFIG["ranks"], index=default_rank_idx, key="tab2_rank_widget")
         start_tis  = st.number_input("Current Years of Service", min_value=0.0, max_value=40.0,
                                      value=float(st.session_state.get("tab1_tis", 4)), step=0.5)
         retire_rank = st.selectbox("Expected Rank at Retirement", CONFIG["ranks"], index=20)
