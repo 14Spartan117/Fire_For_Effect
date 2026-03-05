@@ -932,9 +932,25 @@ with tab3:
 
     with les_col1:
         st.markdown("**ENTITLEMENTS**")
-        les_base   = st.number_input("Base Pay",            min_value=0.0, value=float(st.session_state.get("base_pay", 0.0)), step=10.0, key="les_base")
-        les_bah    = st.number_input("BAH",                 min_value=0.0, value=float(st.session_state.get("bah_amt", 0.0)),  step=10.0, key="les_bah")
-        les_bas    = st.number_input("BAS",                 min_value=0.0, value=float(st.session_state.get("bas_amt", 0.0)),  step=10.0, key="les_bas")
+        tab1_base = float(st.session_state.get("base_pay", 0.0))
+        tab1_bah  = float(st.session_state.get("bah_amt",  0.0))
+        tab1_bas  = float(st.session_state.get("bas_amt",  0.0))
+
+        les_base = st.number_input("Base Pay",  min_value=0.0, value=tab1_base, step=10.0, key="les_base")
+        les_bah  = st.number_input("BAH",       min_value=0.0, value=tab1_bah,  step=10.0, key="les_bah")
+        les_bas  = st.number_input("BAS",       min_value=0.0, value=tab1_bas,  step=10.0, key="les_bas")
+
+        mismatch_fields = []
+        if tab1_base > 0 and abs(les_base - tab1_base) > 1.0: mismatch_fields.append(f"Base Pay (calculator: ${tab1_base:,.2f})")
+        if tab1_bah  > 0 and abs(les_bah  - tab1_bah)  > 1.0: mismatch_fields.append(f"BAH (calculator: ${tab1_bah:,.2f})")
+        if tab1_bas  > 0 and abs(les_bas  - tab1_bas)   > 1.0: mismatch_fields.append(f"BAS (calculator: ${tab1_bas:,.2f})")
+
+        if mismatch_fields:
+            st.warning(
+                f"⚠️ Your entered values for **{', '.join(mismatch_fields)}** differ from what the income calculator produced. "
+                f"If these do not match what's on your actual LES, you should definitely check with your S1. "
+                f"I'm not going to say I'm right and they're wrong, but... yes, that's exactly what I'm saying."
+            )
 
         # Dynamic special pay entries
         if "les_ent_rows" not in st.session_state: st.session_state.les_ent_rows = 0
