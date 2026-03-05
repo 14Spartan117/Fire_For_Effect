@@ -33,6 +33,7 @@ if "tab3_fixed" not in st.session_state: st.session_state.tab3_fixed = 0.0
 if "tab3_invested" not in st.session_state: st.session_state.tab3_invested = 0.0
 if "tab3_guilt_free" not in st.session_state: st.session_state.tab3_guilt_free = 0.0
 if "bah_manual" not in st.session_state: st.session_state.bah_manual = False
+if "les_tsp_actual" not in st.session_state: st.session_state.les_tsp_actual = 0.0
 
 # ==========================================
 # --- MONTE CARLO HELPER FUNCTIONS ---
@@ -617,6 +618,37 @@ with tab2:
             delta_color="off"
         )
 
+        # ── TSP Gap Callout ───────────────────────────────────────────────────
+        les_tsp = st.session_state.get("les_tsp_actual", 0.0)
+        if les_tsp > 0 and current_base > 0:
+            current_tsp_pct = (les_tsp / current_base) * 100
+            gap_pct = savings_pct * 100 - current_tsp_pct
+            gap_dollars = monthly_dollar_equiv - les_tsp
+            if gap_pct > 0.5:
+                st.warning(
+                    f"**You are currently saving {current_tsp_pct:.1f}% of your base pay (${les_tsp:,.2f}/month) toward TSP.** "
+                    f"To meet your financial goals, you need to increase your contributions to "
+                    f"**{savings_pct * 100:.1f}%** — an increase of **{gap_pct:.1f} percentage points "
+                    f"(${gap_dollars:,.2f}/month)**. You can make this adjustment now in "
+                    f"[MyPay](https://mypay.dfas.mil)."
+                )
+            elif gap_pct < -0.5:
+                st.success(
+                    f"**You are currently saving {current_tsp_pct:.1f}% of your base pay (${les_tsp:,.2f}/month) toward TSP** — "
+                    f"**${abs(gap_dollars):,.2f}/month more than your goal requires.** "
+                    f"That surplus increases the odds of hitting your goal, reduces the years you need to save until retirement, "
+                    f"and increases the amount you'll have in retirement. However, if there's another priority, "
+                    f"you are already expected to meet your retirement goals — this surplus could be considered "
+                    f"additional guilt-free spending. Congrats! 🎉"
+                )
+            else:
+                st.success(
+                    f"**You are currently saving {current_tsp_pct:.1f}% of your base pay (${les_tsp:,.2f}/month) toward TSP** — "
+                    f"right on target. Nothing to change."
+                )
+        elif les_tsp == 0.0:
+            st.caption("💡 *Enter your current TSP contribution from your LES in the Budget tab to see how your current savings compares to your goal.*")
+
         civ_rate_line = (
             f"After separation, target **{civ_pct * 100:.1f}% of your civilian salary** — "
             f"set this up in your employer's 401k or IRA. These two rates work together to get you to your goal."
@@ -886,14 +918,108 @@ consistency, and discipline.
 # --- TAB 3: CONSCIOUS SPENDING ---
 with tab3:
     st.header("Step 3: Where Does It Go?")
-    
-    special_pay = st.session_state.get("special_pay", 0.0)
-    mil_taxable = st.session_state.base_pay + special_pay
-    mil_nontaxable = st.session_state.bah_amt + st.session_state.bas_amt
 
+    special_pay = st.session_state.get("special_pay", 0.0)
+
+    # ── LES Form ─────────────────────────────────────────────────────────────
+    st.subheader("🗂️ Leave & Earnings Statement")
+    st.caption(
+        "Enter the values directly from your LES. This is the most accurate way to know what you actually take home. "
+        "Pull up your LES at [myPay](https://mypay.dfas.mil) and follow along line by line."
+    )
+
+    les_col1, les_col2, les_col3 = st.columns(3)
+
+    with les_col1:
+        st.markdown("**ENTITLEMENTS**")
+        les_base   = st.number_input("Base Pay",            min_value=0.0, value=float(st.session_state.get("base_pay", 0.0)), step=10.0, key="les_base")
+        les_bah    = st.number_input("BAH",                 min_value=0.0, value=float(st.session_state.get("bah_amt", 0.0)),  step=10.0, key="les_bah")
+        les_bas    = st.number_input("BAS",                 min_value=0.0, value=float(st.session_state.get("bas_amt", 0.0)),  step=10.0, key="les_bas")
+
+        # Dynamic special pay entries
+        if "les_ent_rows" not in st.session_state: st.session_state.les_ent_rows = 0
+        les_extra_ent = 0.0
+        for i in range(st.session_state.les_ent_rows):
+            ec1, ec2 = st.columns([2, 1])
+            ec1.text_input("Pay Type", key=f"les_ent_name_{i}", placeholder="e.g. Flight Pay, Jump Pay")
+            les_extra_ent += ec2.number_input("Amount", min_value=0.0, step=10.0, key=f"les_ent_amt_{i}")
+        if st.button("＋ Add Entitlement", key="les_add_ent"):
+            st.session_state.les_ent_rows += 1
+            st.rerun()
+
+        les_tot_ent = les_base + les_bah + les_bas + les_extra_ent
+        st.metric("TOT ENT", f"${les_tot_ent:,.2f}")
+
+    with les_col2:
+        st.markdown("**DEDUCTIONS**")
+        les_fed_tax  = st.number_input("Federal Taxes",       min_value=0.0, value=0.0, step=10.0, key="les_fed")
+        les_fica_ss  = st.number_input("FICA - Soc Security", min_value=0.0, value=0.0, step=10.0, key="les_ss")
+        les_fica_med = st.number_input("FICA - Medicare",     min_value=0.0, value=0.0, step=10.0, key="les_med")
+        les_state    = st.number_input("State Taxes",         min_value=0.0, value=0.0, step=10.0, key="les_state",
+                                       help="Enter 0 if you live in a state with no income tax (FL, TX, WA, etc.)")
+        les_sgli     = st.number_input("SGLI",                min_value=0.0, value=0.0, step=1.0,  key="les_sgli")
+        les_sgli_fam = st.number_input("SGLI Fam/Spouse",     min_value=0.0, value=0.0, step=1.0,  key="les_sgli_fam")
+        les_tsp      = st.number_input("TSP Contribution\n(Roth or Traditional)", min_value=0.0, value=0.0, step=10.0, key="les_tsp_input",
+                                       help="Enter your total TSP deduction — Roth, Traditional, or both combined.")
+        les_midmonth = st.number_input("Mid-Month Pay",       min_value=0.0, value=0.0, step=10.0, key="les_mid",
+                                       help="Already received on the 15th — this offsets your EOM deposit but is real income you already have.")
+
+        # Dynamic extra deductions
+        if "les_ded_rows" not in st.session_state: st.session_state.les_ded_rows = 0
+        les_extra_ded = 0.0
+        for i in range(st.session_state.les_ded_rows):
+            dc1, dc2 = st.columns([2, 1])
+            dc1.text_input("Deduction Type", key=f"les_ded_name_{i}", placeholder="e.g. Dental, Garnishment")
+            les_extra_ded += dc2.number_input("Amount", min_value=0.0, step=10.0, key=f"les_ded_amt_{i}")
+        if st.button("＋ Add Deduction", key="les_add_ded"):
+            st.session_state.les_ded_rows += 1
+            st.rerun()
+
+        les_tot_ded = les_fed_tax + les_fica_ss + les_fica_med + les_state + les_sgli + les_sgli_fam + les_tsp + les_midmonth + les_extra_ded
+        st.metric("TOT DED", f"${les_tot_ded:,.2f}")
+
+        # Save TSP actual to session state for Tab 2 gap callout
+        st.session_state.les_tsp_actual = les_tsp
+
+    with les_col3:
+        st.markdown("**ALLOTMENTS**")
+        st.caption("Recurring autopays — insurance, savings allotments, etc.")
+
+        if "les_almt_rows" not in st.session_state: st.session_state.les_almt_rows = 1
+        les_tot_almt = 0.0
+        for i in range(st.session_state.les_almt_rows):
+            ac1, ac2 = st.columns([2, 1])
+            ac1.text_input("Allotment", key=f"les_almt_name_{i}", placeholder="e.g. TRICARE Dental")
+            les_tot_almt += ac2.number_input("Amount", min_value=0.0, step=10.0, key=f"les_almt_amt_{i}")
+        if st.button("＋ Add Allotment", key="les_add_almt"):
+            st.session_state.les_almt_rows += 1
+            st.rerun()
+
+        st.metric("TOT ALMT", f"${les_tot_almt:,.2f}")
+
+        st.divider()
+        st.markdown("**SUMMARY**")
+        eom_pay     = les_tot_ent - les_tot_ded - les_tot_almt
+        mil_takehome = les_midmonth + max(0.0, eom_pay)
+
+        st.metric("TOT ENT",  f"${les_tot_ent:,.2f}")
+        st.metric("– TOT DED", f"${les_tot_ded:,.2f}")
+        st.metric("– TOT ALMT",f"${les_tot_almt:,.2f}")
+        st.metric("= EOM PAY", f"${max(0.0, eom_pay):,.2f}")
+
+    st.info(
+        f"**Mid-Month Pay (${les_midmonth:,.2f}) + EOM Pay (${max(0.0,eom_pay):,.2f}) "
+        f"= Total Military Take-Home: ${mil_takehome:,.2f}/month.**\n\n"
+        f"Your LES EOM Pay is only the *second half* of your monthly pay — the mid-month deposit already "
+        f"hit your account on the 15th. Both deposits together are your actual military take-home."
+    )
+
+    st.divider()
+
+    # ── Additional Income ─────────────────────────────────────────────────────
     st.subheader("➕ Additional Income")
-    st.write("Add gross income from a spouse, rental property, or side hustles.")
-    
+    st.write("Add any other income streams below. **All amounts must be after-tax** — enter what actually hits your account, not gross.")
+
     if "extra_income_rows" not in st.session_state: st.session_state.extra_income_rows = 0
     if st.button("Add Income Stream"): st.session_state.extra_income_rows += 1
 
@@ -904,12 +1030,12 @@ with tab3:
         with c_amt: amt = st.number_input("Amount ($)", key=f"ei_amt_{i}", min_value=0.0, step=100.0)
         with c_freq:
             freq = st.selectbox("Frequency", ["Monthly", "Bi-weekly", "Annually"], key=f"ei_freq_{i}")
-        
+
         if freq == "Monthly": monthly_amt = amt
-        elif freq == "Bi-weekly": monthly_amt = (amt * 26) / 12  
+        elif freq == "Bi-weekly": monthly_amt = (amt * 26) / 12
         else: monthly_amt = amt / 12
         total_extra_income += monthly_amt
-        
+
     if st.session_state.extra_income_rows > 0:
         if st.button("Clear Extra Income", type="secondary"):
             st.session_state.extra_income_rows = 0
@@ -917,40 +1043,42 @@ with tab3:
 
     st.divider()
 
-    st.subheader("💸 Net Take-Home Pay")
-    pay_mode = st.radio("Calculation Mode", ["Manual Entry (From LES / Bank Statement) ⭐ Recommended", "Calculate Estimate (2026 Marginal Tax Rates)"], horizontal=True)
-    
-    if "Manual Entry" in pay_mode:
-        st.write("For the most accurate budget, look at your checking account and input exactly what hits it every month.")
-        est_net = mil_taxable + mil_nontaxable + total_extra_income
-        take_home = st.number_input("Total Monthly Take-Home ($)", value=est_net * 0.85, step=100.0)
-    else:
-        taxable_monthly = mil_taxable + total_extra_income
-        annual_taxable = taxable_monthly * 12
-        std_deduction = 15000
-        tax_base = max(0, annual_taxable - std_deduction)
+    # ── Take-Home Anchor ──────────────────────────────────────────────────────
+    take_home = mil_takehome + total_extra_income
 
+    pay_mode = st.radio(
+        "Income Mode",
+        [
+            "📋 Using my LES values above",
+            "🎲 I'll skip the LES and let an algorithm guess my take-home pay—even though it knows nothing about my deductions, allotments, or tax situation. Honestly, it'll fit right in with the rest of my planning: assumptions, hopes, and vibes."
+        ],
+        key="pay_mode_radio"
+    )
+
+    if "🎲" in pay_mode:
+        mil_taxable    = st.session_state.base_pay + special_pay
+        mil_nontaxable = st.session_state.bah_amt + st.session_state.bas_amt
+        taxable_monthly = mil_taxable + total_extra_income
+        annual_taxable  = taxable_monthly * 12
+        std_deduction   = 15000
+        tax_base = max(0, annual_taxable - std_deduction)
         tax = 0
         if tax_base > 100525:
-            tax += (tax_base - 100525) * 0.24
-            tax_base = 100525
+            tax += (tax_base - 100525) * 0.24; tax_base = 100525
         if tax_base > 47150:
-            tax += (tax_base - 47150) * 0.22
-            tax_base = 47150
+            tax += (tax_base - 47150) * 0.22; tax_base = 47150
         if tax_base > 11600:
-            tax += (tax_base - 11600) * 0.12
-            tax_base = 11600
+            tax += (tax_base - 11600) * 0.12; tax_base = 11600
         if tax_base > 0:
             tax += tax_base * 0.10
-
         monthly_fed_tax = tax / 12
-        monthly_fica = taxable_monthly * 0.0765 
-        st.caption(f"*Estimated Taxes Deducted: Federal **${monthly_fed_tax:,.0f}** | FICA **${monthly_fica:,.0f}** (BAH/BAS excluded from tax)*")
-        take_home = taxable_monthly - monthly_fed_tax - monthly_fica + mil_nontaxable
+        monthly_fica    = taxable_monthly * 0.0765
+        take_home = taxable_monthly - monthly_fed_tax - monthly_fica + mil_nontaxable + total_extra_income
+        st.caption(f"*Estimated Taxes: Federal **${monthly_fed_tax:,.0f}** | FICA **${monthly_fica:,.0f}** — BAH/BAS excluded from tax. Your actual deductions will differ.*")
 
     st.info(f"💰 Total Combined Monthly Take-Home: **${take_home:,.2f}**")
     st.divider()
-    
+
     col_a, col_b, col_c = st.columns(3)
     bp = st.session_state.base_pay if st.session_state.base_pay > 0 else (take_home * 0.6)
     
@@ -998,12 +1126,12 @@ with tab3:
         st.metric("Guilt-Free Total", f"${fun_total:,.2f}", f"{fun_pct:.1f}% of take-home")
 
     # 1. Calculate Taxes for the Sankey Flow
-    if "Manual Entry" in pay_mode:
-        sankey_tax = take_home * 0.15 
-        sankey_gross = take_home + sankey_tax
-    else:
+    if "🎲" in pay_mode:
         sankey_tax = monthly_fed_tax + monthly_fica
-        sankey_gross = mil_taxable + total_extra_income + mil_nontaxable
+        sankey_gross = les_tot_ent + total_extra_income
+    else:
+        sankey_tax = les_fed_tax + les_fica_ss + les_fica_med + les_state
+        sankey_gross = les_tot_ent + total_extra_income
 
     invest_total = save_invest_total 
     guilt_free_total = fun_total
