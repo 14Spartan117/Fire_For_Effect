@@ -34,9 +34,6 @@ if "tab3_invested" not in st.session_state: st.session_state.tab3_invested = 0.0
 if "tab3_guilt_free" not in st.session_state: st.session_state.tab3_guilt_free = 0.0
 if "bah_manual" not in st.session_state: st.session_state.bah_manual = False
 if "les_tsp_actual" not in st.session_state: st.session_state.les_tsp_actual = 0.0
-if "les_base_val" not in st.session_state: st.session_state.les_base_val = 0.0
-if "les_bah_val"  not in st.session_state: st.session_state.les_bah_val  = 0.0
-if "les_bas_val"  not in st.session_state: st.session_state.les_bas_val  = 0.0
 
 # ==========================================
 # --- MONTE CARLO HELPER FUNCTIONS ---
@@ -939,21 +936,20 @@ with tab3:
         tab1_bah  = float(st.session_state.get("bah_amt",  0.0))
         tab1_bas  = float(st.session_state.get("bas_amt",  0.0))
 
+        # Pre-initialize keys to 0 only on first load
+        if "les_base" not in st.session_state: st.session_state["les_base"] = 0.0
+        if "les_bah"  not in st.session_state: st.session_state["les_bah"]  = 0.0
+        if "les_bas"  not in st.session_state: st.session_state["les_bas"]  = 0.0
+
         if st.button("⬇️ Import Base Pay / BAH / BAS from Tab 1", key="import_tab1_pay"):
-            st.session_state.les_base_val = tab1_base
-            st.session_state.les_bah_val  = tab1_bah
-            st.session_state.les_bas_val  = tab1_bas
+            st.session_state["les_base"] = tab1_base
+            st.session_state["les_bah"]  = tab1_bah
+            st.session_state["les_bas"]  = tab1_bas
             st.rerun()
 
-        les_base = st.number_input("Base Pay", min_value=0.0,
-                                   value=float(st.session_state.get("les_base_val", 0.0)),
-                                   step=10.0, key="les_base")
-        les_bah  = st.number_input("BAH",      min_value=0.0,
-                                   value=float(st.session_state.get("les_bah_val",  0.0)),
-                                   step=10.0, key="les_bah")
-        les_bas  = st.number_input("BAS",      min_value=0.0,
-                                   value=float(st.session_state.get("les_bas_val",  0.0)),
-                                   step=10.0, key="les_bas")
+        les_base = st.number_input("Base Pay", min_value=0.0, step=10.0, key="les_base")
+        les_bah  = st.number_input("BAH",      min_value=0.0, step=10.0, key="les_bah")
+        les_bas  = st.number_input("BAS",      min_value=0.0, step=10.0, key="les_bas")
 
         mismatch_fields = []
         if tab1_base > 0 and abs(les_base - tab1_base) > 1.0: mismatch_fields.append(f"Base Pay (calculator: ${tab1_base:,.2f})")
