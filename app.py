@@ -315,7 +315,7 @@ def calc_high3_pension(retire_rank, yrs_at_retire, multiplier):
 
 # --- 3. UI LAYOUT ---
 st.title("🎖️ F.I.R.E. for Effect: Financial Planning for Soldiers")
-st.caption("Finance is boring. So do it once, get it right, and move out.")
+st.caption("Financial Independence, Retire Early — built for those who serve.")
 st.markdown("---")
 
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
@@ -719,28 +719,29 @@ with tab3:
     with col_c:
         st.subheader("🍹 Guilt-Free")
         available_for_fun = take_home - fixed_total - save_invest_total
-        
-        if available_for_fun > 0: st.success(f"**Available to allocate:** ${available_for_fun:,.2f}")
-        else: st.error(f"**Available to allocate:** $0.00 (Check fixed costs!)")
-            
-        base_alloc = float(int((take_home * 0.20) / 6)) 
-        
-        experiences = st.number_input("Experiences (Travel, Events)", value=base_alloc)
-        convenience = st.number_input("Convenience (Delivery, Time-savers)", value=base_alloc)
-        hobbies = st.number_input("Hobbies (Gear, Gym, Gaming)", value=base_alloc)
-        personal = st.number_input("Personal (Clothes, Grooming)", value=base_alloc)
-        entertainment = st.number_input("Entertainment (Dining Out, Bars)", value=base_alloc)
-        generosity = st.number_input("Generosity (Gifts, Donations)", value=base_alloc)
-        
-        fun_total = experiences + convenience + hobbies + personal + entertainment + generosity
-        fun_pct = (fun_total / take_home * 100) if take_home > 0 else 0
-        
+
+        base_alloc = float(int((take_home * 0.20) / 6))
+
+        experiences  = st.number_input("Experiences (Travel, Events)",      value=base_alloc)
+        convenience  = st.number_input("Convenience (Delivery, Time-savers)", value=base_alloc)
+        hobbies      = st.number_input("Hobbies (Gear, Gym, Gaming)",        value=base_alloc)
+        personal     = st.number_input("Personal (Clothes, Grooming)",       value=base_alloc)
+        entertainment= st.number_input("Entertainment (Dining Out, Bars)",   value=base_alloc)
+        generosity   = st.number_input("Generosity (Gifts, Donations)",      value=base_alloc)
+
+        fun_total  = experiences + convenience + hobbies + personal + entertainment + generosity
+        fun_pct    = (fun_total / take_home * 100) if take_home > 0 else 0
+        remaining  = available_for_fun - fun_total
+
         st.divider()
-        if fun_total > available_for_fun:
-            st.metric("Guilt-Free Total", f"${fun_total:,.2f}", f"{fun_pct:.1f}%", delta_color="inverse")
-            st.warning("⚠️ You've allocated more Guilt-Free money than you have available!")
+        if remaining > 0:
+            st.success(f"**Remaining to allocate: ${remaining:,.2f}**")
+        elif remaining == 0:
+            st.success("**Fully allocated. Nothing left on the table. ✅**")
         else:
-            st.metric("Guilt-Free Total", f"${fun_total:,.2f}", f"{fun_pct:.1f}%", delta_color="normal")
+            st.error(f"**Over-allocated by ${abs(remaining):,.2f} — trim a category above.**")
+
+        st.metric("Guilt-Free Total", f"${fun_total:,.2f}", f"{fun_pct:.1f}% of take-home")
 
     # 1. Calculate Taxes for the Sankey Flow
     if "Manual Entry" in pay_mode:
@@ -1100,27 +1101,41 @@ with tab7:
             pdf.add_page()
             pdf.set_margins(15, 15, 15)
 
+            def safe(text):
+                """Strip characters Helvetica can't encode."""
+                return (text
+                    .replace('\u2014', '-')   # em dash
+                    .replace('\u2013', '-')   # en dash
+                    .replace('\u2190', '<-')  # left arrow
+                    .replace('\u2192', '->')  # right arrow
+                    .replace('\u2019', "'")   # right single quote
+                    .replace('\u2018', "'")   # left single quote
+                    .replace('\u201c', '"')   # left double quote
+                    .replace('\u201d', '"')   # right double quote
+                    .replace('\u2026', '...') # ellipsis
+                )
+
             # Header
             pdf.set_font("Helvetica", "B", 18)
             pdf.set_fill_color(30, 60, 114)
             pdf.set_text_color(255, 255, 255)
-            pdf.cell(0, 12, "F.I.R.E. for Effect — Your Financial Plan", fill=True, ln=True, align="C")
+            pdf.cell(0, 12, safe("F.I.R.E. for Effect - Your Financial Plan"), fill=True, ln=True, align="C")
             pdf.set_text_color(0, 0, 0)
             pdf.set_font("Helvetica", "", 9)
-            pdf.cell(0, 6, f"Generated {datetime.date.today().strftime('%B %d, %Y')}  |  For planning purposes only — not financial advice.", ln=True, align="C")
+            pdf.cell(0, 6, safe(f"Generated {datetime.date.today().strftime('%B %d, %Y')}  |  For planning purposes only - not financial advice."), ln=True, align="C")
             pdf.ln(4)
 
             def section_header(title):
                 pdf.set_font("Helvetica", "B", 11)
                 pdf.set_fill_color(220, 230, 245)
-                pdf.cell(0, 7, f"  {title}", fill=True, ln=True)
+                pdf.cell(0, 7, safe(f"  {title}"), fill=True, ln=True)
                 pdf.ln(1)
 
             def row(label, value, indent=4):
                 pdf.set_font("Helvetica", "B", 9)
-                pdf.cell(80, 6, " " * indent + label, ln=False)
+                pdf.cell(80, 6, safe(" " * indent + label), ln=False)
                 pdf.set_font("Helvetica", "", 9)
-                pdf.cell(0, 6, value, ln=True)
+                pdf.cell(0, 6, safe(value), ln=True)
 
             # Income section
             section_header("INCOME SNAPSHOT")
@@ -1135,7 +1150,7 @@ with tab7:
             section_header("RETIREMENT TARGETS")
             row("Estimated Monthly Pension:", f"${est_pension:,.0f}  (High-3 Average)")
             row("Target Nest Egg:", f"${nest_egg:,.0f}")
-            row("Required Savings Rate:", f"{savings_rate*100:.1f}% of Base Pay  ← Enter this in MyPay" if savings_rate else "—")
+            row("Required Savings Rate:", f"{savings_rate*100:.1f}% of Base Pay  <- Enter this in MyPay" if savings_rate else "N/A")
             if success_prob is not None:
                 row("Monte Carlo Probability of Success:", f"{success_prob:.0f}%")
             pdf.ln(2)
@@ -1154,7 +1169,7 @@ with tab7:
             section_header("YOUR WAY FORWARD")
             pdf.set_font("Helvetica", "", 9)
             pdf.set_x(15)
-            pdf.multi_cell(0, 5, way_forward)
+            pdf.multi_cell(0, 5, safe(way_forward))
             pdf.ln(2)
 
             # Priority actions
@@ -1163,32 +1178,32 @@ with tab7:
                 actions = [
                     f"Set TSP contribution to {savings_rate*100:.1f}% of base pay in MyPay",
                     "Verify your TSP fund allocation matches your plan (Interfund Transfer if needed)",
-                    "Review your budget after each promotion — increase savings rate, not spending",
+                    "Review your budget after each promotion - increase savings rate, not spending",
                     "Keep your emergency fund in a High-Yield Savings Account (HYSA)",
                 ]
             else:
                 actions = [
-                    "Secure your 5% BRS match in MyPay immediately — this is free money",
+                    "Secure your 5% BRS match in MyPay immediately - this is free money",
                     "Identify and cut the largest fixed cost that is negotiable (housing, vehicle)",
                     "Eliminate all debt above 8% APR before increasing discretionary spending",
-                    f"Work toward {savings_rate*100:.1f}% TSP contribution — start lower and increase with promotions",
-                    "Review full Action Plan checklist in the app for step-by-step guidance",
+                    f"Work toward {savings_rate*100:.1f}% TSP contribution - start lower and increase with promotions",
+                    "Review full Way Ahead checklist in the app for step-by-step guidance",
                 ]
             for i, action in enumerate(actions, 1):
                 pdf.set_font("Helvetica", "B", 9)
                 pdf.cell(8, 5, f"{i}.", ln=False)
                 pdf.set_font("Helvetica", "", 9)
-                pdf.multi_cell(0, 5, action)
+                pdf.multi_cell(0, 5, safe(action))
 
             pdf.ln(3)
 
             # Footer disclaimer
             pdf.set_font("Helvetica", "I", 7)
             pdf.set_text_color(120, 120, 120)
-            pdf.multi_cell(0, 4,
+            pdf.multi_cell(0, 4, safe(
                 "This document is for educational purposes only. Projections use simplified assumptions including "
                 "primary-zone promotion timelines, historical TSP fund return averages, and a 4% safe withdrawal rate. "
-                "Actual results will vary. Consult a Certified Financial Planner for personalized advice.")
+                "Actual results will vary. Consult a Certified Financial Planner for personalized advice."))
 
             # Output
             pdf_bytes = pdf.output()
@@ -1204,8 +1219,6 @@ with tab7:
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; font-size: 0.85em; color: gray;'>
-<b>Disclaimer:</b> This tool is for educational purposes only. I am not a financial advisor — but financial literacy isn't reserved for people with CFP after their name. Purposeful scrolling through r/personalfinance and r/MilitaryFinance, clicking some links, and reading for a weekend will get you further than you can possibly imagine. Where applicable, model assumptions are documented in the expandable sections throughout the app. Take charge of your money and own your future — it's one of the few investments with guaranteed results. Oh, and I'll take a smash burger with sautéed jalapeños and a cup that's 90% seltzer water with a splash of Coke..
+<b>Disclaimer:</b> This tool is for educational purposes only and uses simplified assumptions (like a constant real return). I am not a financial advisor. But financial literacy isn’t reserved for people with CFP after their name. Take charge of your money and take responsibility for your future—it’s one of the few investments guaranteed to pay dividends.
 </div>
 """, unsafe_allow_html=True)
-
-
