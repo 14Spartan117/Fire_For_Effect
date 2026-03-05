@@ -537,6 +537,13 @@ with tab2:
         st.session_state.est_pension = est_pension
 
         current_base = get_base_pay(start_rank, start_tis)
+        # Back-calculate civilian savings rate from blended rate
+        avg_mil_income = np.mean(base_pay_schedule) if len(base_pay_schedule) > 0 else current_base
+        if civilian_monthly > 0:
+            civ_pct = savings_pct * (avg_mil_income / civilian_monthly)
+        else:
+            civ_pct = None
+
         monthly_dollar_equiv = savings_pct * current_base
 
         st.divider()
@@ -546,17 +553,39 @@ with tab2:
         r3.metric("Real Return (After Inflation)", f"{expected_real_rate * 100:.2f}%")
 
         st.divider()
-        m1, m2 = st.columns(2)
+        m1, m2, m3 = st.columns(3)
         m1.metric(
-            "📌 Required Savings Rate",
+            "📌 Military Savings Rate",
             f"{savings_pct * 100:.1f}% of Base Pay",
-            delta="Enter this % directly in MyPay"
+            delta="This percentage is adjusted in MyPay",
+            delta_color="off"
         )
-        m2.metric(
-            "Today's Dollar Equivalent",
+        if civ_pct is not None:
+            m2.metric(
+                "📌 Civilian Savings Rate",
+                f"{civ_pct * 100:.1f}% of Civilian Salary",
+                delta="Set this up in your 401k or IRA after separation",
+                delta_color="off"
+            )
+        else:
+            m2.metric(
+                "📌 Civilian Savings Rate",
+                "Enter civilian salary above",
+                delta="Required to calculate post-military rate",
+                delta_color="off"
+            )
+        m3.metric(
+            "Today's Military Dollar Equivalent",
             f"${monthly_dollar_equiv:,.2f} / month",
             delta="Starting point only — see note below",
             delta_color="off"
+        )
+
+        civ_rate_line = (
+            f"After separation, target **{civ_pct * 100:.1f}% of your civilian salary** — "
+            f"set this up in your employer's 401k or IRA. These two rates work together to get you to your goal."
+            if civ_pct is not None
+            else "Enter your expected civilian salary above to calculate your post-military savings rate."
         )
 
         st.info(
@@ -566,13 +595,9 @@ with tab2:
             f"${monthly_dollar_equiv:,.0f} buys significantly less than it does today. The percentage of base pay "
             f"automatically scales up with every promotion and pay raise, keeping your contributions "
             f"aligned with the real cost of your future. That's why the % is the number that matters.\n\n"
-            f"Because military pay is relatively predictable throughout your career, it is possible to "
-            f"calculate a single percentage of your base pay that will keep you on track from now until "
-            f"the day you hang up the uniform. Set it once. Let promotions and pay raises do the rest.\n\n"
-            f"However — the moment you transition to civilian life, this percentage changes. Your civilian "
-            f"salary is a different animal that this tool cannot predict. When you separate, revisit this "
-            f"plan with your actual salary and recalculate the savings rate required to stay on track. "
-            f"Do not assume the military percentage carries over.\n\n"
+            f"While you're serving, save **{savings_pct * 100:.1f}% of your base pay** — "
+            f"this percentage is adjusted in MyPay. Let promotions and pay raises do the rest. "
+            f"{civ_rate_line}\n\n"
             f"Okay, I'll get off my soapbox. But if you want to go deeper on why this all works the way it does, "
             f"[here's a good place to start](https://www.investopedia.com/terms/t/timevalueofmoney.asp)."
         )
@@ -581,6 +606,7 @@ with tab2:
         st.divider()
         st.subheader("🎯 Savings Rate Explorer")
         st.caption("Drag the slider to see how your savings rate affects your portfolio growth and the age at which you hit your goal. Uses your projected income schedule and expected real return.")
+        st.info("💡 **This is a what-if explorer.** Adjusting the slider here does not change your plan — it lets you explore tradeoffs between savings rate and retirement age before you commit. If a different rate or age looks better, go back and update your inputs above. The Monte Carlo simulation below always runs on your calculated savings rate.")
 
         explore_pct = st.slider(
             "Savings Rate (% of Base Pay)",
@@ -759,9 +785,17 @@ consistency, and discipline.
                     mode='lines',
                     line=dict(color='rgba(180,180,200,0.35)', width=1.2),
                     showlegend=(k == 0),
-                    name='Individual Paths',
-                    hovertemplate='Age %{x:.1f}: $%{y:,.0f}<extra></extra>'
+                    name=f'Based on {savings_pct*100:.1f}% military savings rate — Probability of Success: {success_rate:.1f}%',
+                    hoverinfo='skip'
                 ))
+
+            st.caption(
+                f"**A note on probability of success:** A result of 50–60% is intentional and appropriate. "
+                f"Targeting 80–90% means planning to survive the worst historical market sequences — "
+                f"which results in significant over-saving in most scenarios. With a military pension as a floor, "
+                f"a 50–60% Monte Carlo success rate reflects a realistic, balanced plan. "
+                f"If your number is well below 50%, consider adjusting your savings rate or retirement age above."
+            )
 
             # 10th–90th percentile band
             fig_mc.add_trace(go_mc.Scatter(
@@ -770,7 +804,7 @@ consistency, and discipline.
                 fill='toself',
                 fillcolor='rgba(0,180,216,0.15)',
                 line=dict(color='rgba(0,0,0,0)'),
-                name='10th–90th Percentile',
+                name='90th Percentile Portfolio Value',
                 hoverinfo='skip'
             ))
 
@@ -779,8 +813,17 @@ consistency, and discipline.
                 x=time_axis, y=p50,
                 mode='lines',
                 line=dict(color='#00b4d8', width=2.5),
-                name='Median Projection',
-                hovertemplate='Age %{x:.1f} median: $%{y:,.0f}<extra></extra>'
+                name='Median Portfolio Value',
+                hoverinfo='skip'
+            ))
+
+            # 10th percentile line (explicit, so it shows in legend)
+            fig_mc.add_trace(go_mc.Scatter(
+                x=time_axis, y=p10,
+                mode='lines',
+                line=dict(color='#00b4d8', width=1, dash='dot'),
+                name='10th Percentile Portfolio Value',
+                hoverinfo='skip'
             ))
 
             # Target line
@@ -790,20 +833,6 @@ consistency, and discipline.
                 annotation_text=f"Target: ${total_nest_egg_needed:,.0f}",
                 annotation_position="top left",
                 annotation_font_color="#ef476f"
-            )
-
-            # Success rate annotation box
-            fig_mc.add_annotation(
-                xref='paper', yref='paper',
-                x=0.99, y=0.97,
-                text=f"<b>Probability of Success: {success_rate:.1f}%</b><br>Savings Rate: {savings_pct*100:.1f}% of Base Pay<br>Real 2026 Dollars",
-                showarrow=False,
-                align='right',
-                font=dict(color='#fafafa', size=12),
-                bgcolor='rgba(30,30,50,0.85)',
-                bordercolor='#00b4d8',
-                borderwidth=1,
-                xanchor='right'
             )
 
             fig_mc.update_layout(
@@ -824,13 +853,13 @@ consistency, and discipline.
                     tickformat='$,.0f'
                 ),
                 legend=dict(
-                    bgcolor='rgba(0,0,0,0)',
+                    bgcolor='rgba(20,20,35,0.85)',
                     font=dict(color='#fafafa'),
                     orientation='h',
                     yanchor='bottom', y=1.02,
                     xanchor='left', x=0
                 ),
-                hovermode='x unified'
+                hovermode=False
             )
 
             st.plotly_chart(fig_mc, use_container_width=True)
