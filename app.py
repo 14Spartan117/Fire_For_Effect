@@ -315,7 +315,7 @@ def calc_high3_pension(retire_rank, yrs_at_retire, multiplier):
 
 # --- 3. UI LAYOUT ---
 st.title("🎖️ F.I.R.E. for Effect: Financial Planning for Soldiers")
-st.caption("Financial Independence, Retire Early — built for those who serve.")
+st.caption("Finance is boring. So do it once, get it right, and move out.")
 st.markdown("---")
 
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
@@ -1207,3 +1207,4 @@ st.markdown("""
 <b>Disclaimer:</b> This tool is for educational purposes only and uses simplified assumptions (like a constant real return). I am not a financial advisor. But financial literacy isn’t reserved for people with CFP after their name. Take charge of your money and take responsibility for your future—it’s one of the few investments guaranteed to pay dividends.
 </div>
 """, unsafe_allow_html=True)
+
