@@ -393,44 +393,44 @@ with tab1:
 
     st.divider()
 
-    if st.button("Calculate Monthly Income"):
+    # Calculate dynamically — no button required
+    zip_found = DATA.get("zip_to_mha", {}).get(zip_code) is not None
+
+    if zip_found:
         base, bas, bah = get_military_pay(rank, tis, zip_code, dep)
+        st.session_state.bah_manual = False
+    else:
+        base, bas, _ = get_military_pay(rank, tis, "92136", dep)  # get base/bas with fallback zip
+        st.warning(
+            f"⚠️ Zip code **{zip_code}** was not found in the BAH database. "
+            "Make sure you're entering your **duty station** zip code, not your home address. "
+            "If your zip is correct and still not found, enter your BAH manually below."
+        )
+        bah = st.number_input("Manual BAH Entry ($/month)", min_value=0.0, step=50.0,
+                              key="manual_bah_input")
+        st.session_state.bah_manual = True
 
-        # BAH zip-not-found guard
-        zip_found = DATA.get("zip_to_mha", {}).get(zip_code) is not None
-        if not zip_found:
-            st.warning(
-                f"⚠️ Zip code **{zip_code}** was not found in the BAH database. "
-                "Make sure you're entering your **duty station** zip code, not your home address. "
-                "If your zip is correct and still not found, enter your BAH manually below."
-            )
-            bah = st.number_input("Manual BAH Entry ($/month)", min_value=0.0, step=50.0,
-                                  key="manual_bah_input")
-            st.session_state.bah_manual = True
-        else:
-            st.session_state.bah_manual = False
-        
-        st.session_state.base_pay = base
-        st.session_state.bas_amt = bas
-        st.session_state.bah_amt = bah
-        st.session_state.special_pay = special_pay
-        st.session_state.tab1_rank = rank
-        st.session_state.tab1_tis = tis
+    st.session_state.base_pay    = base
+    st.session_state.bas_amt     = bas
+    st.session_state.bah_amt     = bah
+    st.session_state.special_pay = special_pay
+    st.session_state.tab1_rank   = rank
+    st.session_state.tab1_tis    = tis
 
-        gross = base + bas + bah + special_pay
-        annual_gross = gross * 12
+    gross = base + bas + bah + special_pay
+    annual_gross = gross * 12
 
-        col_monthly, col_annual = st.columns(2)
-        with col_monthly: st.info(f"### 🗓️ Monthly Gross\n# ${gross:,.2f}")
-        with col_annual: st.success(f"### 💰 Annual Gross\n# ${annual_gross:,.2f}")
+    col_monthly, col_annual = st.columns(2)
+    with col_monthly: st.info(f"### 🗓️ Monthly Gross\n# ${gross:,.2f}")
+    with col_annual: st.success(f"### 💰 Annual Gross\n# ${annual_gross:,.2f}")
 
-        st.write("") 
+    st.write("")
 
-        c_a, c_b, c_c, c_d = st.columns(4)
-        c_a.metric("Base Pay", f"${base:,.2f}")
-        c_b.metric("BAH (Tax-Free)", f"${bah:,.2f}")
-        c_c.metric("BAS (Tax-Free)", f"${bas:,.2f}")
-        c_d.metric("Special Pays", f"${special_pay:,.2f}")
+    c_a, c_b, c_c, c_d = st.columns(4)
+    c_a.metric("Base Pay",        f"${base:,.2f}")
+    c_b.metric("BAH (Tax-Free)",  f"${bah:,.2f}")
+    c_c.metric("BAS (Tax-Free)",  f"${bas:,.2f}")
+    c_d.metric("Special Pays",    f"${special_pay:,.2f}")
 
 # --- TAB 2: RETIREMENT ---
 with tab2:
@@ -946,10 +946,14 @@ with tab3:
         if tab1_bas  > 0 and abs(les_bas  - tab1_bas)   > 1.0: mismatch_fields.append(f"BAS (calculator: ${tab1_bas:,.2f})")
 
         if mismatch_fields:
+            field_names = ", ".join([f.split(" (")[0] for f in mismatch_fields])
+            calc_values = ", ".join([f.split("calculator: ")[1].rstrip(")") for f in mismatch_fields])
             st.warning(
-                f"⚠️ Your entered values for **{', '.join(mismatch_fields)}** differ from what the income calculator produced. "
-                f"If these do not match what's on your actual LES, you should definitely check with your S1. "
-                f"I'm not going to say I'm right and they're wrong, but... yes, that's exactly what I'm saying."
+                f"⚠️ The value you entered for **{field_names}** does not match the calculated value ({calc_values}). "
+                f"If the Base Pay, BAH, or BAS on your LES does not match the calculated values, you should: "
+                f"a) be sure you selected all the right info, "
+                f"b) if it's still wrong, check with your S1. "
+                f"I'm not going to say I'm right and they're wrong, but... actually, yes, that's exactly what I'm saying."
             )
 
         # Dynamic special pay entries
