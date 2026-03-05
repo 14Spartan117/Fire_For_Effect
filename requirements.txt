@@ -5,3 +5,4 @@ altair
 plotly
 matplotlib
 requests
+fpdf2
