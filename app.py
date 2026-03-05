@@ -315,7 +315,7 @@ def calc_high3_pension(retire_rank, yrs_at_retire, multiplier):
 
 # --- 3. UI LAYOUT ---
 st.title("🎖️ F.I.R.E. for Effect: Financial Planning for Soldiers")
-st.caption("Financial Independence, Retire Early — built for those who serve.")
+st.caption("Finance is boring. Do it once, get it right, and move on to more exciting things.")
 st.markdown("---")
 
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
@@ -463,7 +463,7 @@ with tab2:
 
         st.subheader("Post-Military Civilian Salary")
         civilian_monthly = st.number_input("Expected Monthly Civilian Salary ($)", min_value=0.0,
-                                           value=float(int(retire_base)), step=100.0)
+                                           value=0.0, step=100.0)
         total_monthly_civ = civilian_monthly + est_pension
         c1, c2 = st.columns(2)
         c1.metric("Civilian + Pension / Month", f"${total_monthly_civ:,.0f}")
@@ -872,7 +872,9 @@ with tab4:
         q15 = st.radio("15. The Post-9/11 GI Bill pays your tuition, plus a monthly housing stipend equal to what?", 
                        ["The Base Pay of an E-5", "BAH at the E-5 with dependents rate for your school's zip code", "A flat $1,000 a month"], index=None)
         q16 = st.radio("16. What is the 'catch' for transferring your GI Bill to a spouse or child?", 
-                       ["You can do it anytime after 10 years", "You must have 6 years of service AND commit to serving 4 MORE years", "You can only do it right before you retire"], index=None)
+                       ["You can do it anytime after 10 years of service",
+                        "You must have 6 years of service, commit to 4 MORE years, AND have 100% GI Bill eligibility — which academy and ROTC scholarship grads don't reach until year 8 or 7 respectively",
+                        "You can only do it right before you retire"], index=None)
         q17 = st.radio("17. The VA Loan is famous for 'zero down payment'. What is the reality of buying a home?", 
                        ["You need absolutely zero cash to buy a house", "You still need cash for closing costs, earnest money, and inspections", "You are secretly required to put down 3%"], index=None)
         q18 = st.radio("18. How do you get the expensive VA Loan 'Funding Fee' completely waived?", 
@@ -990,8 +992,8 @@ with tab5:
     st.subheader("Phase 4: Military Cheat Codes")
     with st.expander("7. The GI Bill Transfer Trap"):
         st.markdown("""
-        * **The Mission:** You cannot transfer the Post-9/11 GI Bill to your spouse or kids as a retirement gift. You must have at least 6 years of service, AND you must commit to serving 4 *more* years from the date of transfer. 
-        * **Action Steps:** The exact day you hit your 6-year mark, log into MilConnect and initiate the transfer. If you wait until you are 18 years in, you will be forced to serve until 22 years to keep the benefit.
+        * **The Mission:** You cannot transfer the Post-9/11 GI Bill to your spouse or kids as a retirement gift. You must have at least 6 years of service AND commit to serving 4 more years from the date of transfer. You must also have 100% GI Bill eligibility — and this is where many officers get caught off guard. If you commissioned from West Point, your 5-year ADSO does not count toward that eligibility clock, meaning you won't hit 100% until year 8 of total service. ROTC scholarship officers reach it at year 7. OCS and non-scholarship ROTC officers reach it at year 3. Know which category you're in.
+        * **Action Steps:** The exact day you meet both requirements — 6 years of service AND 100% eligibility — log into MilConnect and initiate the transfer. If you wait until you are 18 years in, you will be forced to serve until 22 years to keep the benefit.
         """)
         st.checkbox("✅ I have transferred my GI Bill (Or decided not to)", key="step_7")
 
@@ -1029,22 +1031,28 @@ with tab6:
 # --- TAB 7: MY FINANCIAL PLAN (PDF) ---
 with tab7:
     st.header("📄 Your Plan")
-    st.write("Complete all tabs first, then generate your personalized one-page financial snapshot and way-forward.")
+    st.info(
+        "**This plan is only as good as the numbers behind it.**\n\n"
+        "Thirty minutes with your LES and a bank statement is the difference between an interesting graph "
+        "and a reliable plan — the same difference between the S2 saying an attack might happen someday, "
+        "and knowing it's happening today at this grid. Pull up your LES, check your bank statement, and "
+        "work through each tab with accurate numbers. The plan you get out the other side is worth it."
+    )
 
     # ── Check what data is available ─────────────────────────────────────────
     missing = []
     if st.session_state.get("base_pay", 0.0) == 0.0:
-        missing.append("**Tab 1** — Income Calculator (run 'Calculate Monthly Income')")
+        missing.append("**What You Make** — run 'Calculate Monthly Income' with your duty station zip")
     if st.session_state.get("pmt_target", 0.0) == 0.0:
-        missing.append("**Tab 2** — Retirement Goal (complete fund allocation and inputs)")
+        missing.append("**Retirement Goal Setting** — complete your career inputs and fund allocation")
     tab3_take_home = st.session_state.get("tab3_take_home", 0.0)
     if tab3_take_home == 0.0:
-        missing.append("**Tab 3** — Conscious Spending Plan (enter your take-home pay)")
+        missing.append("**Where Does It Go?** — enter your actual take-home pay")
 
     if missing:
         st.warning(
-            "In order to do my best work, I need accurate data from all tabs. "
-            "The following are still missing:\n\n" + "\n".join(f"- {m}" for m in missing)
+            "The following tabs still need accurate data before your plan can be generated:\n\n" +
+            "\n".join(f"- {m}" for m in missing)
         )
     else:
         # ── Pull data from session state ──────────────────────────────────────
@@ -1251,6 +1259,6 @@ with tab7:
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; font-size: 0.85em; color: gray;'>
-<b>Disclaimer:</b> This tool is for educational purposes only and uses simplified assumptions (like a constant real return). I am not a financial advisor. But financial literacy isn’t reserved for people with CFP after their name. Take charge of your money and take responsibility for your future—it’s one of the few investments guaranteed to pay dividends.
+<b>Disclaimer:</b> This tool is for educational purposes only. I am not a financial advisor — but financial literacy isn't reserved for people with CFP after their name. Purposeful scrolling through r/personalfinance and r/MilitaryFinance, clicking some links, and reading for a weekend will get you further than you can possibly imagine. Where applicable, model assumptions are documented in the expandable sections throughout the app. Take charge of your money and own your future — the return on investment is 100%. Oh, and I'll take a smash burger with sautéed jalapeños and a cup that's 90% seltzer water with a splash of Coke.
 </div>
 """, unsafe_allow_html=True)
