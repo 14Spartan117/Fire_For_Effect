@@ -572,7 +572,9 @@ with tab2:
             f"However — the moment you transition to civilian life, this percentage changes. Your civilian "
             f"salary is a different animal that this tool cannot predict. When you separate, revisit this "
             f"plan with your actual salary and recalculate the savings rate required to stay on track. "
-            f"Do not assume the military percentage carries over."
+            f"Do not assume the military percentage carries over.\n\n"
+            f"Okay, I'll get off my soapbox. But if you want to go deeper on why this all works the way it does, "
+            f"[here's a good place to start](https://www.investopedia.com/terms/t/timevalueofmoney.asp)."
         )
 
         # ── Monte Carlo ───────────────────────────────────────────────────────
@@ -748,23 +750,23 @@ with tab3:
 
     with col_c:
         st.subheader("🍹 Guilt-Free")
-        available_for_fun = take_home - fixed_total - save_invest_total
+        available_for_fun = max(0.0, take_home - fixed_total - save_invest_total)
 
-        experiences  = st.number_input("Experiences (Travel, Events)",        min_value=0.0, value=0.0, step=50.0)
-        convenience  = st.number_input("Convenience (Delivery, Time-savers)", min_value=0.0, value=0.0, step=50.0)
-        hobbies      = st.number_input("Hobbies (Gear, Gym, Gaming)",          min_value=0.0, value=0.0, step=50.0)
-        personal     = st.number_input("Personal (Clothes, Grooming)",         min_value=0.0, value=0.0, step=50.0)
-        entertainment= st.number_input("Entertainment (Dining Out, Bars)",     min_value=0.0, value=0.0, step=50.0)
-        generosity   = st.number_input("Generosity (Gifts, Donations)",        min_value=0.0, value=0.0, step=50.0)
+        experiences   = st.number_input("Experiences (Travel, Events)",        min_value=0.0, value=0.0, step=50.0)
+        convenience   = st.number_input("Convenience (Delivery, Time-savers)", min_value=0.0, value=0.0, step=50.0)
+        hobbies       = st.number_input("Hobbies (Gear, Gym, Gaming)",          min_value=0.0, value=0.0, step=50.0)
+        personal      = st.number_input("Personal (Clothes, Grooming)",         min_value=0.0, value=0.0, step=50.0)
+        entertainment = st.number_input("Entertainment (Dining Out, Bars)",     min_value=0.0, value=0.0, step=50.0)
+        generosity    = st.number_input("Generosity (Gifts, Donations)",        min_value=0.0, value=0.0, step=50.0)
 
         fun_total = experiences + convenience + hobbies + personal + entertainment + generosity
         fun_pct   = (fun_total / take_home * 100) if take_home > 0 else 0
         remaining = available_for_fun - fun_total
 
         st.divider()
-        if remaining > 0:
+        if remaining > 0.005:
             st.success(f"**Remaining to allocate: ${remaining:,.2f}**")
-        elif remaining == 0:
+        elif remaining >= -0.005:
             st.success("**Fully allocated. Nothing left on the table. ✅**")
         else:
             st.error(f"**Over-allocated by ${abs(remaining):,.2f} — trim a category above.**")
