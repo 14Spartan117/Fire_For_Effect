@@ -92,29 +92,43 @@ def get_lifecycle_allocation(years_to_retire):
     elif years_to_retire > 0: return {'C': 0.20, 'S': 0.05, 'I': 0.05, 'F': 0.3, 'G': 0.4}
     else: return {'C': 0.0, 'S': 0.0, 'I': 0.0, 'F': 0.3, 'G': 0.7}
 
-def run_real_monte_carlo(current_age, retire_age, initial_bal, monthly_contrib, 
+def run_real_monte_carlo(current_age, retire_age, initial_bal, monthly_contrib,
                          hist_returns, use_lc, manual_alloc, inflation_rate=0.025, trials=1000):
+    """
+    monthly_contrib can be a scalar (fixed $) or a list/array of length `months`
+    (variable contributions based on promotion schedule).
+    """
     months = (retire_age - current_age) * 12
     monthly_inflation = (1 + inflation_rate)**(1/12) - 1
-    
+
+    # Normalise contribution schedule to an array
+    if np.isscalar(monthly_contrib):
+        contrib_schedule = np.full(months, monthly_contrib)
+    else:
+        contrib_schedule = np.array(monthly_contrib)
+        if len(contrib_schedule) < months:
+            contrib_schedule = np.pad(contrib_schedule, (0, months - len(contrib_schedule)), 'edge')
+        else:
+            contrib_schedule = contrib_schedule[:months]
+
     results = []
     for _ in range(trials):
         balance = initial_bal
         path = [balance]
         samples = hist_returns.sample(months, replace=True)
-        
+
         for i in range(months):
             if use_lc:
                 years_left = (months - i) / 12
                 alloc = get_lifecycle_allocation(years_left)
             else:
                 alloc = manual_alloc
-                
+
             nom_ret = sum(samples.iloc[i][f] * alloc.get(f, 0) for f in alloc)
             real_ret = (1 + nom_ret) / (1 + monthly_inflation) - 1
-            balance = (balance * (1 + real_ret)) + monthly_contrib
+            balance = (balance * (1 + real_ret)) + contrib_schedule[i]
             path.append(balance)
-            
+
         results.append(path)
     return np.array(results)
 
@@ -130,16 +144,21 @@ def load_military_data():
 
 DATA = load_military_data()
 
-def get_snapped_tis(tis):
-    brackets = [0, 2, 3, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40]
-    for b in reversed(brackets):
-        if tis >= b: return b
-    return 0
+def get_base_pay(rank, tis):
+    rank_data = DATA.get("base_pay", {}).get(rank, {})
+    if not rank_data:
+        return 0.0
+    available = sorted([int(k) for k in rank_data.keys()])
+    snapped = available[0]
+    for b in available:
+        if tis >= b:
+            snapped = b
+        else:
+            break
+    return float(rank_data.get(str(snapped), 0.0))
 
 def get_military_pay(rank, tis, zip_code, has_dep):
-    snapped = get_snapped_tis(tis)
-    rank_data = DATA.get("base_pay", {}).get(rank, {})
-    base = rank_data.get(str(snapped), 0.0)
+    base = get_base_pay(rank, tis)
     bas = CONFIG["bas_officer"] if ("O" in rank or "W" in rank) else CONFIG["bas_enlisted"]
     zip_info = DATA.get("zip_to_mha", {}).get(zip_code)
     bah = 0.0
@@ -148,6 +167,116 @@ def get_military_pay(rank, tis, zip_code, has_dep):
         dep_key = "with" if has_dep else "without"
         bah = DATA.get("bah_rates", {}).get(mha_code, {}).get(rank, {}).get(dep_key, 0.0)
     return float(base), float(bas), float(bah)
+
+# --- PROMOTION TIMELINE & SAVINGS RATE HELPERS ---
+
+FUND_NOMINAL_RATES = {'C': 0.105, 'S': 0.110, 'I': 0.075, 'F': 0.040, 'G': 0.028}
+
+# Typical primary-zone promotion timelines (TIS in years at promotion)
+PROMOTION_TIMELINE = {
+    # Enlisted: (rank, TIS_at_promotion)
+    'E-1': 0, 'E-2': 0.5, 'E-3': 1.5, 'E-4': 2.0,
+    'E-5': 3.0, 'E-6': 7.0, 'E-7': 13.0, 'E-8': 17.0, 'E-9': 22.0,
+    # Warrant Officers
+    'W-1': 0, 'W-2': 2.0, 'W-3': 7.0, 'W-4': 13.0, 'W-5': 19.0,
+    # Officers
+    'O-1': 0, 'O-1E': 0, 'O-2': 2.0, 'O-2E': 2.0,
+    'O-3': 4.0, 'O-3E': 4.0, 'O-4': 10.0, 'O-5': 16.0, 'O-6': 22.0, 'O-7': 30.0,
+}
+
+# Ordered progression chains
+PROGRESSION = {
+    'officer':  ['O-1','O-2','O-3','O-4','O-5','O-6','O-7'],
+    'officer_e':['O-1E','O-2E','O-3E','O-4','O-5','O-6','O-7'],
+    'warrant':  ['W-1','W-2','W-3','W-4','W-5'],
+    'enlisted': ['E-1','E-2','E-3','E-4','E-5','E-6','E-7','E-8','E-9'],
+}
+
+def get_progression_chain(rank):
+    if rank in ('O-1E','O-2E','O-3E'): return PROGRESSION['officer_e']
+    if rank.startswith('O'): return PROGRESSION['officer']
+    if rank.startswith('W'): return PROGRESSION['warrant']
+    return PROGRESSION['enlisted']
+
+def build_monthly_base_pay_schedule(start_rank, start_tis, career_months):
+    """
+    Returns a list of monthly base pay values of length career_months,
+    projecting forward using typical promotion timelines from start_rank/start_tis.
+    """
+    chain = get_progression_chain(start_rank)
+    if start_rank not in chain:
+        chain_start = 0
+    else:
+        chain_start = chain.index(start_rank)
+
+    schedule = []
+    for m in range(career_months):
+        tis = start_tis + m / 12.0
+        # Find highest rank in chain that has been reached by this TIS
+        current_rank = chain[chain_start]
+        for rank in chain[chain_start:]:
+            if tis >= PROMOTION_TIMELINE.get(rank, 999):
+                current_rank = rank
+            else:
+                break
+        schedule.append(get_base_pay(current_rank, tis))
+    return schedule
+
+def get_blended_nominal_return(alloc_dict, years_to_retire):
+    """
+    Computes weighted nominal return for a custom allocation dict.
+    L-fund portion uses get_lifecycle_allocation() to derive its sub-weights.
+    alloc_dict keys: C, S, I, F, G, L  (values sum to 1.0)
+    """
+    l_weight = alloc_dict.get('L', 0.0)
+    lc_alloc = get_lifecycle_allocation(years_to_retire) if l_weight > 0 else {}
+
+    total = 0.0
+    for fund, weight in alloc_dict.items():
+        if fund == 'L':
+            # Expand L-fund into its underlying sub-allocation
+            for sub_fund, sub_weight in lc_alloc.items():
+                total += weight * sub_weight * FUND_NOMINAL_RATES.get(sub_fund, 0.0)
+        else:
+            total += weight * FUND_NOMINAL_RATES.get(fund, 0.0)
+    return total
+
+def solve_savings_rate(target_nest_egg, current_tsp, base_pay_schedule,
+                       civilian_monthly, mil_months, total_months,
+                       expected_real_rate, inflation_rate):
+    """
+    Binary-searches for the constant % of income that, applied to the
+    projected income schedule, grows to target_nest_egg.
+    Returns (savings_pct_float, contribution_schedule_list).
+    """
+    monthly_real = (1 + expected_real_rate) ** (1/12) - 1
+    monthly_infl = (1 + inflation_rate) ** (1/12) - 1
+
+    # Build full income schedule (military phase + civilian phase)
+    income_schedule = list(base_pay_schedule)
+    for m in range(total_months - mil_months):
+        income_schedule.append(civilian_monthly)
+
+    def simulate(pct):
+        balance = current_tsp
+        for m in range(total_months):
+            contrib = pct * income_schedule[m]
+            balance = balance * (1 + monthly_real) + contrib
+        return balance
+
+    # Binary search between 0% and 100%
+    lo, hi = 0.0, 1.0
+    for _ in range(60):
+        mid = (lo + hi) / 2
+        if simulate(mid) < target_nest_egg:
+            lo = mid
+        else:
+            hi = mid
+
+    pct = (lo + hi) / 2
+    contrib_schedule = [pct * inc for inc in income_schedule]
+    return pct, contrib_schedule
+
 # --- 3. UI LAYOUT ---
 st.title("🎖️ 2026 Military Reality Check")
 st.markdown("---")
@@ -249,132 +378,194 @@ with tab1:
         c_c.metric("BAS (Tax-Free)", f"${bas:,.2f}")
         c_d.metric("Special Pays", f"${special_pay:,.2f}")
 
-# --- TAB 2: RETIREMENT (UPGRADED REAL RETURN ENGINE) ---
+# --- TAB 2: RETIREMENT ---
 with tab2:
     st.header("Step 2: Retirement & Pension Target")
-    st.info("💡 **Reality Check:** Let's calculate exactly how much you need to save per month in *today's purchasing power*, adjusted for inflation.")
-    
+    st.info("💡 **Reality Check:** We'll calculate the single savings rate — as a % of your base pay — that you can plug directly into MyPay and stay on track for your entire career.")
+
+    # ── Row 1: Career inputs ──────────────────────────────────────────────────
     col_l, col_r = st.columns(2)
     with col_l:
-        st.subheader("The Career Timeline")
+        st.subheader("Career Timeline")
         retire_system = st.radio("Retirement System", ["BRS (2.0%)", "Legacy / High-3 (2.5%)"], horizontal=True)
         multiplier = 0.02 if "BRS" in retire_system else 0.025
-        
-        retire_rank = st.selectbox("Expected Rank at Retirement", CONFIG["ranks"], index=6)
-        current_age = st.slider("Current Age", 18, 60, 25)
+
+        # Pull current rank/TIS from Tab 1 session state if available
+        default_rank_idx = CONFIG["ranks"].index(st.session_state.get("tab1_rank", "O-3")) \
+            if st.session_state.get("tab1_rank") in CONFIG["ranks"] else 18
+        start_rank = st.selectbox("Current Rank", CONFIG["ranks"], index=default_rank_idx)
+        start_tis  = st.number_input("Current Years of Service", min_value=0.0, max_value=40.0,
+                                     value=float(st.session_state.get("tab1_tis", 4)), step=0.5)
+        retire_rank = st.selectbox("Expected Rank at Retirement", CONFIG["ranks"], index=20)
         yrs_at_retire = st.slider("Total Years of Service at Retirement", 20, 40, 20)
-        age_at_retire = st.slider("Age when you stop working", 38, 75, 60)
-        
+        current_age   = st.slider("Current Age", 18, 60, 27)
+        age_at_retire = st.slider("Age When You Stop Working Entirely", 38, 75, 60)
+
     with col_r:
-        st.subheader("Current Assets & Goals")
-        current_tsp = st.number_input("Current Value of TSP/IRAs ($)", value=10000, step=1000)
-        monthly_goal = st.number_input("Total Desired Monthly Income ($)", value=8000, step=500)
-        
-        retire_base, _, _ = get_military_pay(retire_rank, yrs_at_retire, "92136", False) 
+        st.subheader("Assets & Goals")
+        current_tsp  = st.number_input("Current TSP / IRA Balance ($)", value=10000, step=1000)
+        monthly_goal = st.number_input("Desired Monthly Income in Retirement ($)", value=8000, step=500)
+
+        retire_base, _, _ = get_military_pay(retire_rank, yrs_at_retire, "92136", False)
         est_pension = retire_base * (yrs_at_retire * multiplier)
         st.metric("Projected Monthly Pension", f"${est_pension:,.2f}")
 
+        st.subheader("Post-Military Civilian Salary")
+        civilian_monthly = st.number_input("Expected Monthly Civilian Salary ($)", min_value=0.0,
+                                           value=float(int(retire_base)), step=100.0)
+        total_monthly_civ = civilian_monthly + est_pension
+        c1, c2 = st.columns(2)
+        c1.metric("Civilian + Pension / Month", f"${total_monthly_civ:,.0f}")
+        c2.metric("Civilian + Pension / Year",  f"${total_monthly_civ * 12:,.0f}")
+
+    mil_years    = max(0, yrs_at_retire - start_tis)
+    mil_months   = int(mil_years * 12)
     years_to_grow = age_at_retire - current_age
-    
-    # --- FUND SELECTION & INFLATION ---
+    total_months  = max(1, years_to_grow * 12)
+
+    # ── Row 2: Fund allocation ────────────────────────────────────────────────
     st.divider()
-    st.subheader("📊 Dynamic Investment Strategy")
-    st.write("Select a fund strategy to calculate your Required Monthly Investment using historically adjusted real returns.")
-    
-    strat_col, inf_col = st.columns([2, 1])
+    st.subheader("📊 TSP Fund Allocation")
+    st.caption("Set your allocation across C, S, I, F, and G funds. Any remainder is automatically placed in the L-Fund (TSP's default).")
+
+    alloc_col, inf_col = st.columns([3, 1])
     with inf_col:
-        inflation_input = st.slider("Inflation Rate Offset (%)", 0.0, 10.0, 2.5, 0.1, help="This drags down the nominal return into real 2026 dollars.")
+        inflation_input = st.slider("Inflation Rate (%)", 0.0, 10.0, 2.5, 0.1,
+                                    help="Adjusts returns into today's purchasing power.")
         inflation_rate = inflation_input / 100.0
 
-    with strat_col:
-        fund_options = {
-            "Lifecycle (L-Fund): Dynamic Auto-Adjustment": {"nom": 0.075, "alloc": "Lifecycle"},
-            "C-Fund (S&P 500): ~10.5% Nominal | SD: 15%": {"nom": 0.105, "alloc": {'C': 1.0}},
-            "S-Fund (Small Cap): ~11.0% Nominal | SD: 18%": {"nom": 0.110, "alloc": {'S': 1.0}},
-            "I-Fund (International): ~7.5% Nominal | SD: 17%": {"nom": 0.075, "alloc": {'I': 1.0}},
-            "F-Fund (Bonds): ~4.0% Nominal | SD: 5%": {"nom": 0.040, "alloc": {'F': 1.0}},
-            "G-Fund (Govt Sec): ~2.8% Nominal | SD: 1%": {"nom": 0.028, "alloc": {'G': 1.0}}
-        }
-        selected_strategy = st.radio("Primary Investment Vehicle", list(fund_options.keys()))
-        
-    # Real Return Math
-    expected_nom = fund_options[selected_strategy]["nom"]
+    with alloc_col:
+        fc1, fc2, fc3, fc4, fc5 = st.columns(5)
+        pct_c = fc1.slider("C-Fund\n(S&P 500)", 0, 100, 60, 5)
+        pct_s = fc2.slider("S-Fund\n(Small Cap)", 0, 100, 20, 5)
+        pct_i = fc3.slider("I-Fund\n(Intl)", 0, 100, 10, 5)
+        pct_f = fc4.slider("F-Fund\n(Bonds)", 0, 100, 0, 5)
+        pct_g = fc5.slider("G-Fund\n(Govt)", 0, 100, 0, 5)
+
+    manual_sum = pct_c + pct_s + pct_i + pct_f + pct_g
+    pct_l = max(0, 100 - manual_sum)
+    alloc_display = f"C:{pct_c}% | S:{pct_s}% | I:{pct_i}% | F:{pct_f}% | G:{pct_g}% | L-Fund (auto): {pct_l}%"
+
+    if manual_sum > 100:
+        st.error(f"⚠️ Over-allocated by {manual_sum - 100}% — reduce your fund allocations. Total must be ≤ 100%.")
+        allocation_valid = False
+    else:
+        st.success(f"✅ Allocation: {alloc_display}")
+        allocation_valid = True
+
+    alloc_dict = {
+        'C': pct_c / 100, 'S': pct_s / 100, 'I': pct_i / 100,
+        'F': pct_f / 100, 'G': pct_g / 100, 'L': pct_l / 100,
+    }
+    # Monte Carlo allocation (L-fund expands dynamically inside the sim)
+    mc_manual_alloc = {k: v for k, v in alloc_dict.items() if k != 'L'}
+    use_lc = pct_l > 0
+
+    # Blended nominal & real return
+    expected_nom       = get_blended_nominal_return(alloc_dict, years_to_grow)
     expected_real_rate = ((1 + expected_nom) / (1 + inflation_rate)) - 1
 
-    if years_to_grow > 0:
-        monthly_income_gap = max(0, monthly_goal - est_pension)
+    # ── Solver & results ──────────────────────────────────────────────────────
+    if years_to_grow > 0 and allocation_valid:
+        monthly_income_gap   = max(0, monthly_goal - est_pension)
         total_nest_egg_needed = (monthly_income_gap * 12) / 0.04
-        fv_current_savings = current_tsp * ((1 + expected_real_rate) ** years_to_grow)
-        final_funding_gap = max(0, total_nest_egg_needed - fv_current_savings)
-        
-        # Calculate PMT based on REAL rate
-        r, n = expected_real_rate / 12, years_to_grow * 12
-        if r > 0:
-            required_pmt = (final_funding_gap * r) / (((1 + r) ** n) - 1) if final_funding_gap > 0 else 0.0
-        else: # Handle scenarios where inflation outpaces the G/F fund growth
-            required_pmt = final_funding_gap / n if final_funding_gap > 0 else 0.0
-            
-        st.session_state.pmt_target = required_pmt
-        
-        res_col1, res_col2, res_col3 = st.columns(3)
-        res_col1.metric("Goal Nest Egg (Real $)", f"${total_nest_egg_needed:,.0f}")
-        res_col2.metric(f"Expected Real Return", f"{(expected_real_rate * 100):.2f}%", f"{expected_nom*100}% Nom - {inflation_input}% Inf")
-        res_col3.metric("Required Investment", f"${required_pmt:,.2f}", delta="Sent to Budget")
-        
-        # --- MONTE CARLO VISUALIZATION ---
+
+        # Build projected base pay schedule for military phase
+        base_pay_schedule = build_monthly_base_pay_schedule(start_rank, start_tis, min(mil_months, total_months))
+
+        savings_pct, contrib_schedule = solve_savings_rate(
+            total_nest_egg_needed, current_tsp,
+            base_pay_schedule, civilian_monthly,
+            mil_months, total_months,
+            expected_real_rate, inflation_rate
+        )
+
+        st.session_state.pmt_target = savings_pct * get_base_pay(start_rank, start_tis)
+
         st.divider()
-        st.subheader("🎲 Real-Return Monte Carlo Simulator")
-        mc_contribution = st.number_input("Simulate your monthly savings ($):", min_value=0.0, value=float(required_pmt), step=100.0)
+        r1, r2, r3, r4 = st.columns(4)
+        r1.metric("Target Nest Egg (Real $)",   f"${total_nest_egg_needed:,.0f}")
+        r2.metric("Blended Nominal Return",      f"{expected_nom * 100:.2f}%")
+        r3.metric("Real Return (After Inflation)",f"{expected_real_rate * 100:.2f}%")
+        r4.metric("📌 Required Savings Rate",
+                  f"{savings_pct * 100:.1f}% of Base Pay",
+                  delta="Enter this % directly in MyPay")
 
-        if st.button("Run Simulation (1,000 Trials)", type="primary"):
-            with st.spinner("Executing simulation..."):
+        # ── Monte Carlo ───────────────────────────────────────────────────────
+        st.divider()
+        st.subheader("🎲 Monte Carlo Projection (1,000 Trials)")
+        st.caption("Each gray line is one possible future. The market doesn't move in a straight line — two people doing everything right can end up with very different results based purely on timing and luck. That's exactly the point.")
+
+        if st.button("Run Simulation", type="primary"):
+            with st.spinner("Running 1,000 trials..."):
                 hist_returns, data_source = scrape_and_prep_tsp_data()
-                
+
                 if data_source == "Proxy":
-                    st.warning("⚠️ TSP.gov Firewall blocked direct access. Executing simulation using High-Fidelity Historical Proxy Data.")
+                    st.warning("⚠️ TSP.gov blocked direct access. Running on high-fidelity historical proxy data.")
 
-                use_lc = (fund_options[selected_strategy]["alloc"] == "Lifecycle")
-                man_alloc = fund_options[selected_strategy]["alloc"] if not use_lc else {}
-
+                # Blend L-fund into manual alloc for Monte Carlo
+                # The sim handles lifecycle shifts internally via use_lc flag
                 sim_results = run_real_monte_carlo(
-                    current_age, age_at_retire, current_tsp, 
-                    mc_contribution, hist_returns, use_lc, man_alloc, 
+                    current_age, age_at_retire, current_tsp,
+                    contrib_schedule, hist_returns,
+                    use_lc, mc_manual_alloc,
                     inflation_rate=inflation_rate, trials=1000
                 )
 
-# Matplotlib Plot
-                fig, ax = plt.subplots(figsize=(12, 6), facecolor='white')
-                time_axis = np.linspace(current_age, age_at_retire, sim_results.shape[1])
-                
-                p10 = np.percentile(sim_results, 10, axis=0)
-                p50 = np.percentile(sim_results, 50, axis=0)
-                p90 = np.percentile(sim_results, 90, axis=0)
-                success_rate = np.mean(sim_results[:, -1] >= total_nest_egg_needed) * 100
+            fig, ax = plt.subplots(figsize=(12, 6), facecolor='white')
+            time_axis = np.linspace(current_age, age_at_retire, sim_results.shape[1])
 
-                # ---------------------------------------------------------
-                # NEW: Plot 10 individual simulation paths to show volatility
-                # ---------------------------------------------------------
-                for i in range(10):
-                    # Only label the first one so the legend doesn't duplicate 10 times
-                    label = "Individual Market Paths" if i == 0 else ""
-                    ax.plot(time_axis, sim_results[i], color='gray', lw=0.75, alpha=0.35, label=label)
+            p10 = np.percentile(sim_results, 10, axis=0)
+            p50 = np.percentile(sim_results, 50, axis=0)
+            p90 = np.percentile(sim_results, 90, axis=0)
+            success_rate = np.mean(sim_results[:, -1] >= total_nest_egg_needed) * 100
 
-                # The Fan Chart (Percentiles)
-                ax.fill_between(time_axis, p10, p90, color='teal', alpha=0.2, label='10th - 90th Percentile')
-                ax.plot(time_axis, p50, color='teal', lw=3, label='Median Projection')
-                
-                # The Target Dash
-                ax.axhline(y=total_nest_egg_needed, color='red', linestyle='--', lw=2.5, label=f'Target: ${total_nest_egg_needed:,.0f}')
+            for i in range(10):
+                label = "Individual Market Paths" if i == 0 else ""
+                ax.plot(time_axis, sim_results[i], color='gray', lw=0.75, alpha=0.35, label=label)
 
-                # Formatting
-                ax.set_title(f'Probability of Success: {success_rate:.1f}% (Projected 2026 Dollars)', fontsize=14)
-                ax.set_ylabel('Portfolio Value ($)', fontsize=12)
-                ax.set_xlabel('Age', fontsize=12)
-                ax.legend(loc='upper left')
-                ax.grid(True, linestyle='--', alpha=0.5)
-                ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: format(int(x), ',')))
+            ax.fill_between(time_axis, p10, p90, color='teal', alpha=0.2, label='10th–90th Percentile')
+            ax.plot(time_axis, p50, color='teal', lw=3, label='Median Projection')
+            ax.axhline(y=total_nest_egg_needed, color='red', linestyle='--', lw=2.5,
+                       label=f'Target: ${total_nest_egg_needed:,.0f}')
 
-                st.pyplot(fig)
+            ax.set_title(f'Probability of Success: {success_rate:.1f}%  |  Savings Rate: {savings_pct*100:.1f}% of Base Pay  (Real 2026 Dollars)', fontsize=13)
+            ax.set_ylabel('Portfolio Value ($)', fontsize=12)
+            ax.set_xlabel('Age', fontsize=12)
+            ax.legend(loc='upper left')
+            ax.grid(True, linestyle='--', alpha=0.5)
+            ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: format(int(x), ',')))
+            st.pyplot(fig)
+
+    # ── Assumptions expander ──────────────────────────────────────────────────
+    st.divider()
+    with st.expander("📋 Model Assumptions"):
+        st.markdown("""
+        **Promotion Timeline (Primary Zone — Army)**
+
+        | Community | Progression |
+        |---|---|
+        | **Officers** | O-1 → O-2 at 2 yrs · O-3 at 4 · O-4 at 10 · O-5 at 16 · O-6 at 22 |
+        | **Warrant Officers** | W-1 → CW2 at 2 yrs · CW3 at 7 · CW4 at 13 · CW5 at 19 |
+        | **Enlisted** | E-1 → E-2 at 6 mo · E-3 at 18 mo · E-4 at 2 yrs · E-5 at 3 · E-6 at 7 · E-7 at 13 · E-8 at 17 · E-9 at 22 |
+
+        **Fund Nominal Return Assumptions**
+
+        | Fund | Nominal Rate |
+        |---|---|
+        | C-Fund (S&P 500) | 10.5% |
+        | S-Fund (Small Cap) | 11.0% |
+        | I-Fund (International) | 7.5% |
+        | F-Fund (Bonds) | 4.0% |
+        | G-Fund (Govt Securities) | 2.8% |
+        | L-Fund | Dynamic blend based on years to retirement |
+
+        **⚠️ A Note on Your Future Civilian Salary**
+
+        Your future civilian pay is one of the biggest unknowns in this entire plan. No one can predict what job you'll have, what the economy will look like, or what you'll actually earn after you take off the uniform. Be conservative in your estimate. A lower assumed salary means a higher required savings rate today — and that's a good thing. It's always better to oversave and be pleasantly surprised than to undersave and come up short.
+
+        **Other Assumptions:** Pension uses final base pay × years of service × multiplier. Nest egg target uses the 4% safe withdrawal rule. All projections are in real (inflation-adjusted) dollars.
+        """)
 # --- TAB 3: CONSCIOUS SPENDING ---
 with tab3:
     st.header("Step 3: Conscious Spending Plan")
@@ -744,4 +935,3 @@ st.markdown("""
 <b>Disclaimer:</b> This tool is for educational purposes only and uses simplified assumptions (like a constant real return). I am not a financial advisor. But financial literacy isn’t reserved for people with CFP after their name. Take charge of your money and take responsibility for your future—it’s one of the few investments guaranteed to pay dividends.
 </div>
 """, unsafe_allow_html=True)
-
