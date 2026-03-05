@@ -9,7 +9,7 @@ import requests
 import io
 
 # --- 1. CONFIGURATION ---
-st.set_page_config(page_title="2026 Military Reality Check", page_icon="🎖️", layout="wide")
+st.set_page_config(page_title="F.I.R.E. for Effect", page_icon="🎖️", layout="wide")
 
 CONFIG = {
     "ranks": ["E-1", "E-2", "E-3", "E-4", "E-5", "E-6", "E-7", "E-8", "E-9", 
@@ -314,17 +314,18 @@ def calc_high3_pension(retire_rank, yrs_at_retire, multiplier):
     return avg_base * (yrs_at_retire * multiplier)
 
 # --- 3. UI LAYOUT ---
-st.title("🎖️ 2026 Military Reality Check")
+st.title("🎖️ F.I.R.E. for Effect: Financial Planning for Soldiers")
+st.caption("Financial Independence, Retire Early — built for those who serve.")
 st.markdown("---")
 
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-    "💰 Income Calculator", "📈 Retirement Goal", "⚖️ Conscious Spending Plan",
-    "🧠 FinLit Quiz", "🗺️ Action Plan", "📬 Feedback & AAR", "📄 My Financial Plan"
+    "💰 What You Make", "📈 Retirement Goal Setting", "💸 Where Does It Go?",
+    "🎯 Know the Game", "✅ Way Ahead", "📬 Feedback", "📄 Your Plan"
 ])
 
 # --- TAB 1: INCOME TRUTH ---
 with tab1:
-    st.header("Step 1: Calculate Your 2026 Pay")
+    st.header("Step 1: What You Make")
 
     col1, col2 = st.columns(2)
     with col1:
@@ -628,7 +629,7 @@ with tab2:
         """)
 # --- TAB 3: CONSCIOUS SPENDING ---
 with tab3:
-    st.header("Step 3: Conscious Spending Plan")
+    st.header("Step 3: Where Does It Go?")
     
     special_pay = st.session_state.get("special_pay", 0.0)
     mil_taxable = st.session_state.base_pay + special_pay
@@ -798,7 +799,7 @@ with tab3:
 
 # --- TAB 4: FINLIT QUIZ ---
 with tab4:
-    st.header("Step 4: Financial Readiness Quiz")
+    st.header("Know the Game: Financial Readiness Quiz")
     st.write("Let's see if you're actually ready to build wealth, or if you're about to become a dealership's favorite customer.")
     
     with st.form("finlit_quiz"):
@@ -887,7 +888,7 @@ with tab4:
 
 # --- TAB 5: ACTION PLAN ---
 with tab5:
-    st.header("Step 5: The Action Plan")
+    st.header("Way Ahead: Your Financial Order of Operations")
     st.write("Gamifying the classic financial order of operations. Expand each step, execute the mission, and check it off.")
 
     total_steps = 9
@@ -979,13 +980,13 @@ with tab5:
 
 # --- TAB 6: FEEDBACK & AAR ---
 with tab6:
-    st.header("Step 6: After Action Review (AAR)")
-    st.write("Got a question? Found a bug? Want a new feature added to the app? Drop it below.")
+    st.header("Feedback")
+    st.write("Got a question? Found a bug? Want a new feature? Drop it below.")
     
     contact_form = """
     <form action="https://formsubmit.co/ian.moss@nps.edu" method="POST">
         <input type="hidden" name="_captcha" value="false">
-        <input type="hidden" name="_subject" value="New Fire For Effect App Feedback!">
+        <input type="hidden" name="_subject" value="F.I.R.E. for Effect — Feedback">
         <input type="text" name="name" placeholder="Your Name/Callsign (Optional)" style="width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 5px; border: 1px solid #ccc;">
         <input type="email" name="email" placeholder="Your Email (If you want a reply)" style="width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 5px; border: 1px solid #ccc;">
         <textarea name="message" placeholder="Questions, comments, or brilliant ideas go here..." rows="5" required style="width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 5px; border: 1px solid #ccc;"></textarea>
@@ -996,7 +997,7 @@ with tab6:
 
 # --- TAB 7: MY FINANCIAL PLAN (PDF) ---
 with tab7:
-    st.header("📄 My Financial Plan")
+    st.header("📄 Your Plan")
     st.write("Complete all tabs first, then generate your personalized one-page financial snapshot and way-forward.")
 
     # ── Check what data is available ─────────────────────────────────────────
@@ -1103,7 +1104,7 @@ with tab7:
             pdf.set_font("Helvetica", "B", 18)
             pdf.set_fill_color(30, 60, 114)
             pdf.set_text_color(255, 255, 255)
-            pdf.cell(0, 12, "2026 Military Financial Plan", fill=True, ln=True, align="C")
+            pdf.cell(0, 12, "F.I.R.E. for Effect — Your Financial Plan", fill=True, ln=True, align="C")
             pdf.set_text_color(0, 0, 0)
             pdf.set_font("Helvetica", "", 9)
             pdf.cell(0, 6, f"Generated {datetime.date.today().strftime('%B %d, %Y')}  |  For planning purposes only — not financial advice.", ln=True, align="C")
