@@ -696,27 +696,27 @@ with tab2:
         st.divider()
         st.subheader("🎲 Monte Carlo Projection (1,000 Trials)")
         st.markdown("""
-You've now decided how much you make, how much you want in retirement, how much you need to save, 
-and your allocation and risk tolerance. The explorer above shows you when you can retire and what 
-it takes to get there — using average expected returns.
+You've done the work. You know what you make, what you need, what you need to save, and how you want 
+it invested. The graph above gives you the answer — if I do this, when will I meet my goal? It's 
+clean, smooth, predictable.
 
-**But that's not real life.**
+**But it's a lie.**
 
-Average returns are a smooth line drawn through decades of chaos. They don't show the crash you'll 
-retire into, the year your portfolio drops 40% right when you were about to stop working, or the 
-decade where nothing happens and you start to doubt the whole plan. Investing has risk — and the 
-average hides all of it.
+Real markets don't move in straight lines. They crash the second you buy in. They go sideways for a 
+decade while you wonder if you made a mistake. They drop 40% and every instinct you have screams 
+*sell*. The average return is a number drawn through decades of panic, euphoria, and everything in 
+between — and the average hides all of it.
 
-**Get ready for real life.**
+**Know that this is what you're actually signing up for.**
 
-Each gray line below is one possible future. The market doesn't move in a straight line — two people 
-doing everything right can end up with very different results based purely on timing and luck. 
-That's exactly the point. There will be highs. There will be lows. You will watch your balance drop 
-and every instinct will tell you to do something. Don't. You made a plan — now execute it.
+Every gray line below is a real possible future. Two soldiers, same plan, same rate, same fund — 
+completely different outcomes based on nothing but luck and timing. That's the game. There will be 
+years that feel like you're losing. Stay in. Don't touch it. You made a plan — execute it like your 
+financial future depends on it, because it does.
 
-And guard yourself against anyone who claims they have a cheat code, a fast lane, or a guaranteed 
-return. Especially guard yourself against people who tell you about their wins — because those people 
-will never tell you about their losses.
+And if anyone ever tells you they have a guaranteed return, a cheat code, or a hot tip — run. People 
+brag about wins. They never mention the losses. The market has no shortcuts: there is only time, 
+consistency, and discipline.
 
 *May the odds be ever in your favor.*
         """)
