@@ -761,6 +761,8 @@ consistency, and discipline.
                     inflation_rate=inflation_rate, trials=1000
                 )
 
+            fig, ax = plt.subplots(figsize=(12, 6), facecolor='#0e1117')
+            ax.set_facecolor('#0e1117')
             time_axis = np.linspace(current_age, age_at_retire, sim_results.shape[1])
 
             p10 = np.percentile(sim_results, 10, axis=0)
@@ -769,25 +771,34 @@ consistency, and discipline.
             success_rate = np.mean(sim_results[:, -1] >= total_nest_egg_needed) * 100
             st.session_state.mc_success_rate = success_rate
 
-            # Sample 20 paths evenly across the percentile distribution
+            # 20 paths sampled evenly across percentile distribution
             final_vals = sim_results[:, -1]
             sorted_idx = np.argsort(final_vals)
             sample_idx = [sorted_idx[int(i * (1000 - 1) / 19)] for i in range(20)]
 
-            import plotly.graph_objects as go_mc
-            fig_mc = go_mc.Figure()
-
-            # 20 sampled individual paths
             for k, idx in enumerate(sample_idx):
-                fig_mc.add_trace(go_mc.Scatter(
-                    x=time_axis,
-                    y=sim_results[idx],
-                    mode='lines',
-                    line=dict(color='rgba(180,180,200,0.35)', width=1.2),
-                    showlegend=(k == 0),
-                    name=f'Based on {savings_pct*100:.1f}% military savings rate — Probability of Success: {success_rate:.1f}%',
-                    hoverinfo='skip'
-                ))
+                label = f'Based on {savings_pct*100:.1f}% military savings rate — Probability of Success: {success_rate:.1f}%' if k == 0 else ""
+                ax.plot(time_axis, sim_results[idx], color='#b4b4c8', lw=0.9, alpha=0.35, label=label)
+
+            ax.fill_between(time_axis, p10, p90, color='#00b4d8', alpha=0.15, label='90th Percentile Portfolio Value')
+            ax.plot(time_axis, p50, color='#00b4d8', lw=2.5, label='Median Portfolio Value')
+            ax.plot(time_axis, p10, color='#00b4d8', lw=1, linestyle='dotted', label='10th Percentile Portfolio Value')
+            ax.axhline(y=total_nest_egg_needed, color='#ef476f', linestyle='--', lw=1.5,
+                       label=f'Target: ${total_nest_egg_needed:,.0f}')
+
+            ax.set_ylabel('Portfolio Value ($)', fontsize=11, color='#fafafa')
+            ax.set_xlabel('Age', fontsize=11, color='#fafafa')
+            ax.tick_params(colors='#fafafa')
+            ax.spines['bottom'].set_color('#2a2a3e')
+            ax.spines['left'].set_color('#2a2a3e')
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.grid(True, linestyle='--', alpha=0.2, color='#2a2a3e')
+            ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${int(x):,}'))
+            legend = ax.legend(loc='upper left', fontsize=9,
+                               facecolor='#14141f', edgecolor='#00b4d8',
+                               labelcolor='#fafafa', framealpha=0.85)
+            st.pyplot(fig)
 
             st.caption(
                 f"**A note on probability of success:** A result of 50–60% is intentional and appropriate. "
@@ -796,73 +807,6 @@ consistency, and discipline.
                 f"a 50–60% Monte Carlo success rate reflects a realistic, balanced plan. "
                 f"If your number is well below 50%, consider adjusting your savings rate or retirement age above."
             )
-
-            # 10th–90th percentile band
-            fig_mc.add_trace(go_mc.Scatter(
-                x=np.concatenate([time_axis, time_axis[::-1]]),
-                y=np.concatenate([p90, p10[::-1]]),
-                fill='toself',
-                fillcolor='rgba(0,180,216,0.15)',
-                line=dict(color='rgba(0,0,0,0)'),
-                name='90th Percentile Portfolio Value',
-                hoverinfo='skip'
-            ))
-
-            # Median line
-            fig_mc.add_trace(go_mc.Scatter(
-                x=time_axis, y=p50,
-                mode='lines',
-                line=dict(color='#00b4d8', width=2.5),
-                name='Median Portfolio Value',
-                hoverinfo='skip'
-            ))
-
-            # 10th percentile line (explicit, so it shows in legend)
-            fig_mc.add_trace(go_mc.Scatter(
-                x=time_axis, y=p10,
-                mode='lines',
-                line=dict(color='#00b4d8', width=1, dash='dot'),
-                name='10th Percentile Portfolio Value',
-                hoverinfo='skip'
-            ))
-
-            # Target line
-            fig_mc.add_hline(
-                y=total_nest_egg_needed,
-                line_dash="dash", line_color="#ef476f", line_width=1.5,
-                annotation_text=f"Target: ${total_nest_egg_needed:,.0f}",
-                annotation_position="top left",
-                annotation_font_color="#ef476f"
-            )
-
-            fig_mc.update_layout(
-                plot_bgcolor='#0e1117',
-                paper_bgcolor='#0e1117',
-                font=dict(color='#fafafa'),
-                height=480,
-                margin=dict(l=60, r=30, t=30, b=50),
-                xaxis=dict(
-                    title='Age',
-                    gridcolor='#2a2a3e',
-                    zerolinecolor='#2a2a3e',
-                ),
-                yaxis=dict(
-                    title='Portfolio Value ($)',
-                    gridcolor='#2a2a3e',
-                    zerolinecolor='#2a2a3e',
-                    tickformat='$,.0f'
-                ),
-                legend=dict(
-                    bgcolor='rgba(20,20,35,0.85)',
-                    font=dict(color='#fafafa'),
-                    orientation='h',
-                    yanchor='bottom', y=1.02,
-                    xanchor='left', x=0
-                ),
-                hovermode=False
-            )
-
-            st.plotly_chart(fig_mc, use_container_width=True)
 
     # ── Assumptions expander ──────────────────────────────────────────────────
     st.divider()
