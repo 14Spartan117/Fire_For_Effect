@@ -728,8 +728,6 @@ consistency, and discipline.
                 if data_source == "Proxy":
                     st.warning("⚠️ TSP.gov blocked direct access. Running on high-fidelity historical proxy data.")
 
-                # Blend L-fund into manual alloc for Monte Carlo
-                # The sim handles lifecycle shifts internally via use_lc flag
                 sim_results = run_real_monte_carlo(
                     current_age, age_at_retire, current_tsp,
                     contrib_schedule, hist_returns,
@@ -737,7 +735,6 @@ consistency, and discipline.
                     inflation_rate=inflation_rate, trials=1000
                 )
 
-            fig, ax = plt.subplots(figsize=(12, 6), facecolor='white')
             time_axis = np.linspace(current_age, age_at_retire, sim_results.shape[1])
 
             p10 = np.percentile(sim_results, 10, axis=0)
@@ -746,22 +743,97 @@ consistency, and discipline.
             success_rate = np.mean(sim_results[:, -1] >= total_nest_egg_needed) * 100
             st.session_state.mc_success_rate = success_rate
 
-            for i in range(10):
-                label = "Individual Market Paths" if i == 0 else ""
-                ax.plot(time_axis, sim_results[i], color='gray', lw=0.75, alpha=0.35, label=label)
+            # Sample 20 paths evenly across the percentile distribution
+            final_vals = sim_results[:, -1]
+            sorted_idx = np.argsort(final_vals)
+            sample_idx = [sorted_idx[int(i * (1000 - 1) / 19)] for i in range(20)]
 
-            ax.fill_between(time_axis, p10, p90, color='teal', alpha=0.2, label='10th–90th Percentile')
-            ax.plot(time_axis, p50, color='teal', lw=3, label='Median Projection')
-            ax.axhline(y=total_nest_egg_needed, color='red', linestyle='--', lw=2.5,
-                       label=f'Target: ${total_nest_egg_needed:,.0f}')
+            import plotly.graph_objects as go_mc
+            fig_mc = go_mc.Figure()
 
-            ax.set_title(f'Probability of Success: {success_rate:.1f}%  |  Savings Rate: {savings_pct*100:.1f}% of Base Pay  (Real 2026 Dollars)', fontsize=13)
-            ax.set_ylabel('Portfolio Value ($)', fontsize=12)
-            ax.set_xlabel('Age', fontsize=12)
-            ax.legend(loc='upper left')
-            ax.grid(True, linestyle='--', alpha=0.5)
-            ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: format(int(x), ',')))
-            st.pyplot(fig)
+            # 20 sampled individual paths
+            for k, idx in enumerate(sample_idx):
+                fig_mc.add_trace(go_mc.Scatter(
+                    x=time_axis,
+                    y=sim_results[idx],
+                    mode='lines',
+                    line=dict(color='rgba(180,180,200,0.35)', width=1.2),
+                    showlegend=(k == 0),
+                    name='Individual Paths',
+                    hovertemplate='Age %{x:.1f}: $%{y:,.0f}<extra></extra>'
+                ))
+
+            # 10th–90th percentile band
+            fig_mc.add_trace(go_mc.Scatter(
+                x=np.concatenate([time_axis, time_axis[::-1]]),
+                y=np.concatenate([p90, p10[::-1]]),
+                fill='toself',
+                fillcolor='rgba(0,180,216,0.15)',
+                line=dict(color='rgba(0,0,0,0)'),
+                name='10th–90th Percentile',
+                hoverinfo='skip'
+            ))
+
+            # Median line
+            fig_mc.add_trace(go_mc.Scatter(
+                x=time_axis, y=p50,
+                mode='lines',
+                line=dict(color='#00b4d8', width=2.5),
+                name='Median Projection',
+                hovertemplate='Age %{x:.1f} median: $%{y:,.0f}<extra></extra>'
+            ))
+
+            # Target line
+            fig_mc.add_hline(
+                y=total_nest_egg_needed,
+                line_dash="dash", line_color="#ef476f", line_width=1.5,
+                annotation_text=f"Target: ${total_nest_egg_needed:,.0f}",
+                annotation_position="top left",
+                annotation_font_color="#ef476f"
+            )
+
+            # Success rate annotation box
+            fig_mc.add_annotation(
+                xref='paper', yref='paper',
+                x=0.99, y=0.97,
+                text=f"<b>Probability of Success: {success_rate:.1f}%</b><br>Savings Rate: {savings_pct*100:.1f}% of Base Pay<br>Real 2026 Dollars",
+                showarrow=False,
+                align='right',
+                font=dict(color='#fafafa', size=12),
+                bgcolor='rgba(30,30,50,0.85)',
+                bordercolor='#00b4d8',
+                borderwidth=1,
+                xanchor='right'
+            )
+
+            fig_mc.update_layout(
+                plot_bgcolor='#0e1117',
+                paper_bgcolor='#0e1117',
+                font=dict(color='#fafafa'),
+                height=480,
+                margin=dict(l=60, r=30, t=30, b=50),
+                xaxis=dict(
+                    title='Age',
+                    gridcolor='#2a2a3e',
+                    zerolinecolor='#2a2a3e',
+                ),
+                yaxis=dict(
+                    title='Portfolio Value ($)',
+                    gridcolor='#2a2a3e',
+                    zerolinecolor='#2a2a3e',
+                    tickformat='$,.0f'
+                ),
+                legend=dict(
+                    bgcolor='rgba(0,0,0,0)',
+                    font=dict(color='#fafafa'),
+                    orientation='h',
+                    yanchor='bottom', y=1.02,
+                    xanchor='left', x=0
+                ),
+                hovermode='x unified'
+            )
+
+            st.plotly_chart(fig_mc, use_container_width=True)
 
     # ── Assumptions expander ──────────────────────────────────────────────────
     st.divider()
