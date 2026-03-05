@@ -413,6 +413,8 @@ with tab1:
         st.session_state.bas_amt = bas
         st.session_state.bah_amt = bah
         st.session_state.special_pay = special_pay
+        st.session_state.tab1_rank = rank
+        st.session_state.tab1_tis = tis
 
         gross = base + bas + bah + special_pay
         annual_gross = gross * 12
@@ -477,30 +479,64 @@ with tab2:
     # ── Row 2: Fund allocation ────────────────────────────────────────────────
     st.divider()
     st.subheader("📊 TSP Fund Allocation")
-    st.caption("Set your allocation across C, S, I, F, and G funds. Any remainder is automatically placed in the L-Fund (TSP's default).")
+    st.caption(
+        "By default, 100% goes to the L-Fund — TSP's automatic lifecycle strategy that shifts to "
+        "bonds as you approach retirement. To customize, move the sliders below. "
+        "The L-Fund percentage updates automatically to show what's left over."
+    )
 
-    alloc_col, inf_col = st.columns([3, 1])
+    alloc_col, inf_col = st.columns([5, 1])
     with inf_col:
         inflation_input = st.slider("Inflation Rate (%)", 0.0, 10.0, 2.5, 0.1,
                                     help="Adjusts returns into today's purchasing power.")
         inflation_rate = inflation_input / 100.0
 
-    with alloc_col:
-        fc1, fc2, fc3, fc4, fc5 = st.columns(5)
-        pct_c = fc1.slider("C-Fund\n(S&P 500)", 0, 100, 60, 5)
-        pct_s = fc2.slider("S-Fund\n(Small Cap)", 0, 100, 20, 5)
-        pct_i = fc3.slider("I-Fund\n(Intl)", 0, 100, 10, 5)
-        pct_f = fc4.slider("F-Fund\n(Bonds)", 0, 100, 0, 5)
-        pct_g = fc5.slider("G-Fund\n(Govt)", 0, 100, 0, 5)
+    # Real returns (Fisher equation): (1+nominal)/(1+inflation) - 1
+    def real(nominal): return round(((1 + nominal) / (1 + inflation_rate) - 1) * 100, 1)
+    rc, rs, ri, rf, rg = real(0.113), real(0.094), real(0.063), real(0.054), real(0.047)
 
-    manual_sum = pct_c + pct_s + pct_i + pct_f + pct_g
-    pct_l = max(0, 100 - manual_sum)
-    alloc_display = f"C:{pct_c}% | S:{pct_s}% | I:{pct_i}% | F:{pct_f}% | G:{pct_g}% | L-Fund (auto): {pct_l}%"
+    with alloc_col:
+        fc1, fc2, fc3, fc4, fc5, fc6 = st.columns(6)
+        pct_c = fc1.slider(
+            f"C-Fund (S&P 500)\n{rc:+.1f}% real ±18%/yr",
+            0, 100, 0, 5,
+            help="Large-cap U.S. stocks. Highest long-term growth, highest short-term swings."
+        )
+        pct_s = fc2.slider(
+            f"S-Fund (Small Cap)\n{rs:+.1f}% real ±22%/yr",
+            0, 100, 0, 5,
+            help="Small/mid-cap U.S. stocks. Higher potential, higher volatility than C Fund."
+        )
+        pct_i = fc3.slider(
+            f"I-Fund (Intl)\n{ri:+.1f}% real ±19%/yr",
+            0, 100, 0, 5,
+            help="International stocks. Diversification outside the U.S. market."
+        )
+        pct_f = fc4.slider(
+            f"F-Fund (Bonds)\n{rf:+.1f}% real ±4%/yr",
+            0, 100, 0, 5,
+            help="U.S. bond index. Stabilizes your portfolio but lower long-term growth."
+        )
+        pct_g = fc5.slider(
+            f"G-Fund (Govt)\n{rg:+.1f}% real ±0%/yr",
+            0, 100, 0, 5,
+            help="Government securities. Guaranteed — cannot lose principal. Lowest return."
+        )
+        manual_sum = pct_c + pct_s + pct_i + pct_f + pct_g
+        pct_l = max(0, 100 - manual_sum)
+        fc6.metric(
+            "L-Fund (Auto)\nLifecycle blend",
+            f"{pct_l}%",
+            delta="Remainder" if pct_l > 0 else "None",
+            delta_color="normal" if pct_l > 0 else "off",
+            help="Whatever you don't manually allocate goes here. TSP's default target-date strategy."
+        )
 
     if manual_sum > 100:
         st.error(f"⚠️ Over-allocated by {manual_sum - 100}% — reduce your fund allocations. Total must be ≤ 100%.")
         allocation_valid = False
     else:
+        alloc_display = f"C:{pct_c}% | S:{pct_s}% | I:{pct_i}% | F:{pct_f}% | G:{pct_g}% | L-Fund (auto): {pct_l}%"
         st.success(f"✅ Allocation: {alloc_display}")
         allocation_valid = True
 
@@ -780,9 +816,13 @@ consistency, and discipline.
                 label = f'Based on {savings_pct*100:.1f}% military savings rate — Probability of Success: {success_rate:.1f}%' if k == 0 else ""
                 ax.plot(time_axis, sim_results[idx], color='#b4b4c8', lw=0.9, alpha=0.35, label=label)
 
-            ax.fill_between(time_axis, p10, p90, color='#00b4d8', alpha=0.15, label='90th Percentile Portfolio Value')
-            ax.plot(time_axis, p50, color='#00b4d8', lw=2.5, label='Median Portfolio Value')
-            ax.plot(time_axis, p10, color='#00b4d8', lw=1, linestyle='dotted', label='10th Percentile Portfolio Value')
+            ax.fill_between(time_axis, p10, p90, color='#00b4d8', alpha=0.15)
+            ax.plot(time_axis, p90, color='#00b4d8', lw=1.2, linestyle='dashed',
+                    label=f'90th Percentile: ${p90[-1]:,.0f} at age {age_at_retire}')
+            ax.plot(time_axis, p50, color='#00b4d8', lw=2.5,
+                    label=f'Median: ${p50[-1]:,.0f} at age {age_at_retire}')
+            ax.plot(time_axis, p10, color='#00b4d8', lw=1, linestyle='dotted',
+                    label=f'10th Percentile: ${p10[-1]:,.0f} at age {age_at_retire}')
             ax.axhline(y=total_nest_egg_needed, color='#ef476f', linestyle='--', lw=1.5,
                        label=f'Target: ${total_nest_egg_needed:,.0f}')
 
