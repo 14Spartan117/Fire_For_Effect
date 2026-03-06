@@ -13,7 +13,12 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # --- 1. CONFIGURATION ---
-st.set_page_config(page_title="F.I.R.E. for Effect", page_icon="🎖️", layout="wide")
+st.set_page_config(
+    page_title="F.I.R.E. for Effect",
+    page_icon="🎖️",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
 
 CONFIG = {
     "ranks": ["E-1", "E-2", "E-3", "E-4", "E-5", "E-6", "E-7", "E-8", "E-9", 
@@ -449,12 +454,12 @@ def calc_high3_pension(retire_rank, yrs_at_retire, multiplier):
 
 # --- 3. UI LAYOUT ---
 st.title("🎖️ F.I.R.E. for Effect: Financial Planning for Soldiers")
-st.caption("Finance is boring. Do it once, get it right, and move on to more exciting things.")
+st.caption("Finance is boring. Do it once, get it right, and move on.")
 st.markdown("---")
 
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-    "💰 What You Make", "📈 Retirement Goal Setting", "💸 Where Does It Go?",
-    "🎯 Know the Game", "✅ Way Ahead", "📬 Feedback", "📄 Your Plan"
+    "💰 What Do You Make?", "📈 How Much Do You Need to Save?", "💸 Where Does It Go?",
+    "🎯 Know the Game", "✅ The Way Ahead", "📬 Feedback", "📄 Your Plan"
 ])
 
 # --- TAB 1: INCOME TRUTH ---
@@ -582,12 +587,22 @@ with tab2:
         retire_system = st.radio("Retirement System", ["BRS (2.0%)", "Legacy / High-3 (2.5%)"], horizontal=True)
         multiplier = 0.02 if "BRS" in retire_system else 0.025
 
-        # Pull current rank/TIS from Tab 1 session state if available
-        default_rank_idx = CONFIG["ranks"].index(st.session_state.get("tab1_rank", "O-3")) \
-            if st.session_state.get("tab1_rank") in CONFIG["ranks"] else 18
-        start_rank = st.selectbox("Current Rank", CONFIG["ranks"], index=default_rank_idx, key="tab2_rank_widget")
+        # Pull current rank/TIS from Tab 1 via import button
+        if "tab2_rank" not in st.session_state: st.session_state["tab2_rank"] = 4  # E-5 default index
+        if "tab2_tis" not in st.session_state: st.session_state["tab2_tis"] = 4.0
+
+        if st.button("⬇️ Import Rank / TIS from Tab 1", key="import_tab1_rank"):
+            t1_rank = st.session_state.get("tab1_rank")
+            t1_tis  = st.session_state.get("tab1_tis", 4)
+            if t1_rank and t1_rank in CONFIG["ranks"]:
+                st.session_state["tab2_rank"] = CONFIG["ranks"].index(t1_rank)
+            st.session_state["tab2_tis"] = float(t1_tis)
+            st.rerun()
+
+        start_rank = st.selectbox("Current Rank", CONFIG["ranks"],
+                                  index=st.session_state["tab2_rank"], key="tab2_rank_widget")
         start_tis  = st.number_input("Current Years of Service", min_value=0.0, max_value=40.0,
-                                     value=float(st.session_state.get("tab1_tis", 4)), step=0.5)
+                                     value=st.session_state["tab2_tis"], step=0.5)
         retire_rank = st.selectbox("Expected Rank at Retirement", CONFIG["ranks"], index=20)
         yrs_at_retire = st.slider("Total Years of Service at Retirement", 20, 40, 20)
         current_age   = st.slider("Current Age", 18, 60, 27)
@@ -796,16 +811,12 @@ with tab2:
 
         st.info(
             f"**Why the percentage matters more than the dollar amount.**\n\n"
-            f"Saving a fixed ${monthly_dollar_equiv:,.0f}/month sounds straightforward — but inflation quietly "
-            f"erodes its purchasing power every year. By the time you retire, that same "
-            f"${monthly_dollar_equiv:,.0f} buys significantly less than it does today. The percentage of base pay "
-            f"automatically scales up with every promotion and pay raise, keeping your contributions "
-            f"aligned with the real cost of your future. That's why the % is the number that matters.\n\n"
-            f"While you're serving, save **{savings_pct * 100:.1f}% of your base pay** — "
-            f"this percentage is adjusted in MyPay. Let promotions and pay raises do the rest. "
+            f"A fixed ${monthly_dollar_equiv:,.0f}/month sounds simple — but inflation erodes its purchasing power every year. "
+            f"A percentage of base pay scales automatically with every promotion and raise, keeping your contributions "
+            f"aligned with what your future actually costs. Set it once, let your career do the rest.\n\n"
+            f"**Military phase:** Save **{savings_pct * 100:.1f}% of base pay** — set this in MyPay. "
             f"{civ_rate_line}\n\n"
-            f"Okay, I'll get off my soapbox. But if you want to go deeper on why this all works the way it does, "
-            f"[here's a good place to start](https://www.investopedia.com/terms/t/timevalueofmoney.asp)."
+            f"More on why this works: [Time Value of Money](https://www.investopedia.com/terms/t/timevalueofmoney.asp)."
         )
 
         # ── Interactive Savings Rate Explorer ────────────────────────────────
@@ -1031,28 +1042,34 @@ consistency, and discipline.
         | **Warrant Officers** | W-1 → CW2 at 3 yrs · CW3 at 8 · CW4 at 14 · CW5 at 20 |
         | **Enlisted** | E-1 → E-2 at 6 mo · E-3 at 18 mo · E-4 at 2 yrs · E-5 at 4 · E-6 at 8 · E-7 at 14 · E-8 at 18 · E-9 at 23 |
 
-        > ⏱️ **Promotion lag:** Timelines above reflect when your pay actually changes, not when you're selected. Board selection typically happens ~12 months before you pin on the new rank and start receiving higher pay. This makes the savings rate estimate slightly more conservative — which is intentional.
+        > ⏱️ **Promotion lag:** Timelines reflect when pay actually changes — approximately 12 months after board selection. This makes savings rate estimates slightly conservative, which is intentional.
 
-        **Pension Calculation**
+        **Pension (High-3 Average)**
 
-        Pension is calculated using the **High-3 average** — the average of your base pay during the 3 years immediately before retirement. This uses the promotion timeline above to determine what rank you were actually being paid at during those years, not just your final rank. This is more accurate than using final base pay alone and will produce a slightly lower pension estimate than a simple final-pay calculation.
+        Averages base pay across the 3 years immediately before retirement, using the promotion timeline above to determine what rank was actually being paid during those years. More accurate than final-pay alone — and slightly lower.
 
-        **Fund Nominal Return Assumptions**
+        **Savings Rate Solver**
 
-        | Fund | Nominal Rate |
-        |---|---|
-        | C-Fund (S&P 500) | 10.5% |
-        | S-Fund (Small Cap) | 11.0% |
-        | I-Fund (International) | 7.5% |
-        | F-Fund (Bonds) | 4.0% |
-        | G-Fund (Govt Securities) | 2.8% |
+        Binary-searches for the constant percentage of income that grows your current TSP balance to your target nest egg. Military phase uses your projected base pay schedule (rank + promotion timeline). Civilian phase uses your entered expected salary. All growth is in real (inflation-adjusted) dollars.
+
+        **Fund Return Assumptions** *(inception-to-date, tspfolio.com)*
+
+        | Fund | Nominal CAGR | Std Dev |
+        |---|---|---|
+        | C-Fund (S&P 500) | 11.3% | ±18%/yr |
+        | S-Fund (Small Cap) | 9.4% | ±22%/yr |
+        | I-Fund (International) | 6.3% | ±19%/yr |
+        | F-Fund (Bonds) | 5.4% | ±4%/yr |
+        | G-Fund (Govt Securities) | 4.7% | ±0%/yr |
         | L-Fund | Dynamic blend based on years to retirement |
 
-        **⚠️ A Note on Your Future Civilian Salary**
+        Real returns shown in sliders use the Fisher equation: `(1 + nominal) / (1 + inflation) - 1`. They update live as you adjust the inflation slider.
 
-        Your future civilian pay is one of the biggest unknowns in this entire plan. No one can predict what job you'll have, what the economy will look like, or what you'll actually earn after you take off the uniform. Be conservative. A lower assumed salary produces a higher required savings rate — and that's a good thing. It's always better to oversave and be pleasantly surprised than to undersave and come up short.
+        **Monte Carlo**
 
-        **Other Assumptions:** Nest egg target uses the 4% safe withdrawal rule. All projections are in real (inflation-adjusted) dollars.
+        1,000 trials. Each trial randomly samples historical monthly TSP returns (with replacement) and applies your projected contribution schedule. Returns are deflated by your selected inflation rate. Contributions are nominal dollars. Success = portfolio ≥ target nest egg at your stop-working age.
+
+        **Other:** Nest egg target uses the 4% safe withdrawal rule. Civilian salary is a major unknown — be conservative.
         """)
 # --- TAB 3: CONSCIOUS SPENDING ---
 with tab3:
@@ -1065,7 +1082,7 @@ with tab3:
     pay_mode = st.radio(
         "Income Mode",
         [
-            "📋 Using my LES values above",
+            "📋 Using my LES values below",
             "🎲 I'll skip the LES and let an algorithm guess my take-home pay—even though it knows nothing about my deductions, allotments, or tax situation. Honestly, it'll fit right in with the rest of my planning: assumptions, hopes, and vibes."
         ],
         key="pay_mode_radio"
@@ -1578,27 +1595,21 @@ with tab7:
     st.session_state.tabs_visited.add(7)
     st.session_state.max_tab_reached = max(st.session_state.max_tab_reached, 7)
     st.header("📄 Your Plan")
-    st.info(
-        "**This plan is only as good as the numbers behind it.**\n\n"
-        "Thirty minutes with your LES and a bank statement is the difference between an interesting graph "
-        "and a reliable plan — the same difference between the S2 saying an attack might happen someday, "
-        "and knowing it's happening today at this grid. Pull up your LES, check your bank statement, and "
-        "work through each tab with accurate numbers. The plan you get out the other side is worth it."
-    )
+    st.caption("A snapshot of your numbers from each tab — income, retirement targets, and budget. Download it as a PDF to keep, share, or brief your spouse.")
 
     # ── Check what data is available ─────────────────────────────────────────
     missing = []
     if st.session_state.get("base_pay", 0.0) == 0.0:
-        missing.append("**What You Make** — run 'Calculate Monthly Income' with your duty station zip")
+        missing.append("**What You Make** — complete your rank, TIS, and zip code")
     if st.session_state.get("pmt_target", 0.0) == 0.0:
         missing.append("**Retirement Goal Setting** — complete your career inputs and fund allocation")
     tab3_take_home = st.session_state.get("tab3_take_home", 0.0)
     if tab3_take_home == 0.0:
-        missing.append("**Where Does It Go?** — enter your actual take-home pay")
+        missing.append("**Where Does It Go?** — enter your take-home pay")
 
     if missing:
         st.warning(
-            "The following tabs still need accurate data before your plan can be generated:\n\n" +
+            "Complete the following tabs before generating your plan:\n\n" +
             "\n".join(f"- {m}" for m in missing)
         )
     else:
@@ -1609,7 +1620,7 @@ with tab7:
         special_pay   = st.session_state.get("special_pay", 0.0)
         gross_monthly = base_pay + bah_amt + bas_amt + special_pay
 
-        pmt_target    = st.session_state.get("pmt_target", 0.0)  # dollar equiv at current pay
+        pmt_target    = st.session_state.get("pmt_target", 0.0)
         savings_rate  = st.session_state.get("savings_rate_pct", 0.0)
         nest_egg      = st.session_state.get("nest_egg_target", 0.0)
         est_pension   = st.session_state.get("est_pension", 0.0)
@@ -1620,6 +1631,144 @@ with tab7:
         invested      = st.session_state.get("tab3_invested", 0.0)
         guilt_free    = st.session_state.get("tab3_guilt_free", 0.0)
         surplus       = take_home - fixed_costs - invested - guilt_free
+
+        on_track = surplus >= 0 and invested >= pmt_target * 0.9
+
+        if on_track:
+            way_forward = (
+                f"Based on your numbers, you're in a strong position. Your budget has a ${surplus:,.0f}/month "
+                f"surplus and your investments are on pace. Set your TSP contribution to {savings_rate*100:.1f}% "
+                f"of base pay in MyPay and leave it alone. Every promotion is an opportunity to increase your "
+                f"contribution rate — not your spending. You're automated and ready to roll."
+            )
+            st.success(way_forward)
+        else:
+            shortfall = max(0, pmt_target - invested)
+            way_forward = (
+                f"Your numbers show there's work to do — your budget is "
+                f"{'in deficit by $' + f'{abs(surplus):,.0f}/month' if surplus < 0 else 'tight'} "
+                f"and your investments are ${shortfall:,.0f}/month short of your goal. "
+                "Start with the BRS match, eliminate high-interest debt, then automate your savings rate. "
+                "Small adjustments now compound significantly over a career."
+            )
+            st.warning(way_forward)
+
+        # ── PDF button at top ─────────────────────────────────────────────────
+        if st.button("📥 Generate & Download PDF", type="primary"):
+            st.session_state.pdf_downloaded = True
+            if not st.session_state.session_logged:
+                st.session_state.session_logged = True
+                log_session()
+            from fpdf import FPDF
+            import datetime
+
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_margins(15, 15, 15)
+
+            def safe(text):
+                return (text
+                    .replace('\u2014', '-').replace('\u2013', '-')
+                    .replace('\u2190', '<-').replace('\u2192', '->')
+                    .replace('\u2019', "'").replace('\u2018', "'")
+                    .replace('\u201c', '"').replace('\u201d', '"')
+                    .replace('\u2026', '...')
+                )
+
+            pdf.set_font("Helvetica", "B", 18)
+            pdf.set_fill_color(30, 60, 114)
+            pdf.set_text_color(255, 255, 255)
+            pdf.cell(0, 12, safe("F.I.R.E. for Effect - Your Financial Plan"), fill=True, ln=True, align="C")
+            pdf.set_text_color(0, 0, 0)
+            pdf.set_font("Helvetica", "", 9)
+            pdf.cell(0, 6, safe(f"Generated {datetime.date.today().strftime('%B %d, %Y')}  |  For planning purposes only - not financial advice."), ln=True, align="C")
+            pdf.ln(4)
+
+            def section_header(title):
+                pdf.set_font("Helvetica", "B", 11)
+                pdf.set_fill_color(220, 230, 245)
+                pdf.cell(0, 7, safe(f"  {title}"), fill=True, ln=True)
+                pdf.ln(1)
+
+            def row(label, value, indent=4):
+                pdf.set_font("Helvetica", "B", 9)
+                pdf.cell(80, 6, safe(" " * indent + label), ln=False)
+                pdf.set_font("Helvetica", "", 9)
+                pdf.cell(0, 6, safe(value), ln=True)
+
+            section_header("INCOME SNAPSHOT")
+            row("Monthly Gross Pay:", f"${gross_monthly:,.0f}")
+            row("  Base Pay:", f"${base_pay:,.0f}")
+            row("  BAH (Tax-Free):", f"${bah_amt:,.0f}")
+            row("  BAS (Tax-Free):", f"${bas_amt:,.0f}")
+            row("  Special Pays:", f"${special_pay:,.0f}")
+            pdf.ln(2)
+
+            section_header("RETIREMENT TARGETS")
+            row("Estimated Monthly Pension:", f"${est_pension:,.0f}  (High-3 Average)")
+            row("Target Nest Egg:", f"${nest_egg:,.0f}")
+            row("Required Savings Rate:", f"{savings_rate*100:.1f}% of Base Pay  <- Set this in MyPay" if savings_rate else "N/A")
+            if success_prob is not None:
+                row("Monte Carlo Probability of Success:", f"{success_prob:.0f}%")
+            pdf.ln(2)
+
+            section_header("MONTHLY BUDGET SUMMARY")
+            row("Take-Home Pay:", f"${take_home:,.0f}")
+            row("Fixed Costs:", f"${fixed_costs:,.0f}")
+            row("Investments / Savings:", f"${invested:,.0f}")
+            row("Guilt-Free Spending:", f"${guilt_free:,.0f}")
+            status = "SURPLUS" if surplus >= 0 else "DEFICIT"
+            row(f"Budget {status}:", f"${abs(surplus):,.0f}/month")
+            pdf.ln(2)
+
+            section_header("YOUR WAY FORWARD")
+            pdf.set_font("Helvetica", "", 9)
+            pdf.set_x(15)
+            pdf.multi_cell(180, 5, safe(way_forward))
+            pdf.ln(2)
+
+            section_header("PRIORITY ACTIONS")
+            if on_track:
+                actions = [
+                    f"Set TSP contribution to {savings_rate*100:.1f}% of base pay in MyPay",
+                    "Verify TSP fund allocation matches your plan (Interfund Transfer if needed)",
+                    "After every promotion — increase savings rate, not spending",
+                    "Keep emergency fund in a High-Yield Savings Account (HYSA)",
+                ]
+            else:
+                actions = [
+                    "Secure your 5% BRS match in MyPay immediately — this is free money",
+                    "Identify and cut the largest negotiable fixed cost (housing, vehicle)",
+                    "Eliminate all debt above 8% APR before increasing discretionary spending",
+                    f"Work toward {savings_rate*100:.1f}% TSP contribution — start lower, increase with promotions",
+                    "Review full Way Ahead checklist in the app for step-by-step guidance",
+                ]
+            for i, action in enumerate(actions, 1):
+                pdf.set_font("Helvetica", "B", 9)
+                pdf.set_x(15)
+                pdf.cell(8, 5, f"{i}.", ln=False)
+                pdf.set_font("Helvetica", "", 9)
+                pdf.multi_cell(167, 5, safe(action))
+                pdf.set_x(15)
+
+            pdf.ln(3)
+            pdf.set_font("Helvetica", "I", 7)
+            pdf.set_text_color(120, 120, 120)
+            pdf.multi_cell(180, 4, safe(
+                "This document is for educational purposes only. Projections use simplified assumptions including "
+                "primary-zone promotion timelines, historical TSP fund return averages, and a 4% safe withdrawal rate. "
+                "Actual results will vary. Consult a Certified Financial Planner for personalized advice."))
+
+            pdf_bytes = pdf.output()
+            st.download_button(
+                label="⬇️ Download Your Financial Plan (PDF)",
+                data=bytes(pdf_bytes),
+                file_name=f"military_financial_plan_{datetime.date.today()}.pdf",
+                mime="application/pdf"
+            )
+            st.success("✅ PDF ready — click above to download.")
+
+        st.divider()
 
         # ── On-screen preview ─────────────────────────────────────────────────
         st.subheader("📊 Snapshot Preview")
@@ -1643,168 +1792,9 @@ with tab7:
             st.metric("Fixed Costs", f"${fixed_costs:,.0f}")
             st.metric("Invested", f"${invested:,.0f}")
             delta_color = "normal" if surplus >= 0 else "inverse"
-            st.metric("Surplus / Deficit", f"${surplus:,.0f}", delta="On track" if surplus >= 0 else "Needs attention", delta_color=delta_color)
-
-        # ── Way forward narrative ──────────────────────────────────────────────
-        st.divider()
-        st.subheader("🗺️ Your Way Forward")
-
-        on_track = surplus >= 0 and invested >= pmt_target * 0.9
-
-        if on_track:
-            way_forward = (
-                f"Based on your numbers, you're in a strong position. Your budget has a ${surplus:,.0f}/month "
-                f"surplus and your investments are on pace. The most important thing now is to make sure your "
-                f"TSP contribution is set to {savings_rate*100:.1f}% of base pay in MyPay — then leave it alone. "
-                "Avoid lifestyle creep as your pay increases with each promotion. Every raise is an opportunity "
-                "to increase your contribution rate, not your spending. Stay the course, let the market do its "
-                "work, and trust the plan. You're automated and ready to roll."
-            )
-            st.success(way_forward)
-        else:
-            shortfall = max(0, pmt_target - invested)
-            way_forward = (
-                f"Your numbers show there's some work to do — your budget is "
-                f"{'in deficit by $' + f'{abs(surplus):,.0f}/month' if surplus < 0 else 'tight'} "
-                f"and your current investment amount is ${shortfall:,.0f}/month short of your goal. "
-                "The good news: small adjustments now compound into big results over a career. "
-                "You don't need to fix everything at once. Start by reviewing your fixed costs — "
-                "housing and transportation are usually the biggest levers. Then work through the "
-                "priority tips in the Action Plan tab: secure your BRS match first, eliminate high-interest "
-                "debt second, then automate your savings. You won't feel immediate progress, but stay confident. "
-                "Every month you're in the market is a month working for you."
-            )
-            st.warning(way_forward)
-
-        # ── Generate PDF ──────────────────────────────────────────────────────
-        st.divider()
-        if st.button("📥 Generate & Download PDF", type="primary"):
-            st.session_state.pdf_downloaded = True
-            if not st.session_state.session_logged:
-                st.session_state.session_logged = True
-                log_session()
-            from fpdf import FPDF
-            import datetime
-
-            pdf = FPDF()
-            pdf.add_page()
-            pdf.set_margins(15, 15, 15)
-
-            def safe(text):
-                """Strip characters Helvetica can't encode."""
-                return (text
-                    .replace('\u2014', '-')   # em dash
-                    .replace('\u2013', '-')   # en dash
-                    .replace('\u2190', '<-')  # left arrow
-                    .replace('\u2192', '->')  # right arrow
-                    .replace('\u2019', "'")   # right single quote
-                    .replace('\u2018', "'")   # left single quote
-                    .replace('\u201c', '"')   # left double quote
-                    .replace('\u201d', '"')   # right double quote
-                    .replace('\u2026', '...') # ellipsis
-                )
-
-            # Header
-            pdf.set_font("Helvetica", "B", 18)
-            pdf.set_fill_color(30, 60, 114)
-            pdf.set_text_color(255, 255, 255)
-            pdf.cell(0, 12, safe("F.I.R.E. for Effect - Your Financial Plan"), fill=True, ln=True, align="C")
-            pdf.set_text_color(0, 0, 0)
-            pdf.set_font("Helvetica", "", 9)
-            pdf.cell(0, 6, safe(f"Generated {datetime.date.today().strftime('%B %d, %Y')}  |  For planning purposes only - not financial advice."), ln=True, align="C")
-            pdf.ln(4)
-
-            def section_header(title):
-                pdf.set_font("Helvetica", "B", 11)
-                pdf.set_fill_color(220, 230, 245)
-                pdf.cell(0, 7, safe(f"  {title}"), fill=True, ln=True)
-                pdf.ln(1)
-
-            def row(label, value, indent=4):
-                pdf.set_font("Helvetica", "B", 9)
-                pdf.cell(80, 6, safe(" " * indent + label), ln=False)
-                pdf.set_font("Helvetica", "", 9)
-                pdf.cell(0, 6, safe(value), ln=True)
-
-            # Income section
-            section_header("INCOME SNAPSHOT")
-            row("Monthly Gross Pay:", f"${gross_monthly:,.0f}")
-            row("  Base Pay:", f"${base_pay:,.0f}")
-            row("  BAH (Tax-Free):", f"${bah_amt:,.0f}")
-            row("  BAS (Tax-Free):", f"${bas_amt:,.0f}")
-            row("  Special Pays:", f"${special_pay:,.0f}")
-            pdf.ln(2)
-
-            # Retirement section
-            section_header("RETIREMENT TARGETS")
-            row("Estimated Monthly Pension:", f"${est_pension:,.0f}  (High-3 Average)")
-            row("Target Nest Egg:", f"${nest_egg:,.0f}")
-            row("Required Savings Rate:", f"{savings_rate*100:.1f}% of Base Pay  <- Enter this in MyPay" if savings_rate else "N/A")
-            if success_prob is not None:
-                row("Monte Carlo Probability of Success:", f"{success_prob:.0f}%")
-            pdf.ln(2)
-
-            # Budget section
-            section_header("MONTHLY BUDGET SUMMARY")
-            row("Take-Home Pay:", f"${take_home:,.0f}")
-            row("Fixed Costs:", f"${fixed_costs:,.0f}")
-            row("Investments / Savings:", f"${invested:,.0f}")
-            row("Guilt-Free Spending:", f"${guilt_free:,.0f}")
-            status = "SURPLUS" if surplus >= 0 else "DEFICIT"
-            row(f"Budget {status}:", f"${abs(surplus):,.0f}/month")
-            pdf.ln(2)
-
-            # Way forward section
-            section_header("YOUR WAY FORWARD")
-            pdf.set_font("Helvetica", "", 9)
-            pdf.set_x(15)
-            pdf.multi_cell(180, 5, safe(way_forward))
-            pdf.ln(2)
-
-            # Priority actions
-            section_header("PRIORITY ACTIONS")
-            if on_track:
-                actions = [
-                    f"Set TSP contribution to {savings_rate*100:.1f}% of base pay in MyPay",
-                    "Verify your TSP fund allocation matches your plan (Interfund Transfer if needed)",
-                    "Review your budget after each promotion - increase savings rate, not spending",
-                    "Keep your emergency fund in a High-Yield Savings Account (HYSA)",
-                ]
-            else:
-                actions = [
-                    "Secure your 5% BRS match in MyPay immediately - this is free money",
-                    "Identify and cut the largest fixed cost that is negotiable (housing, vehicle)",
-                    "Eliminate all debt above 8% APR before increasing discretionary spending",
-                    f"Work toward {savings_rate*100:.1f}% TSP contribution - start lower and increase with promotions",
-                    "Review full Way Ahead checklist in the app for step-by-step guidance",
-                ]
-            for i, action in enumerate(actions, 1):
-                pdf.set_font("Helvetica", "B", 9)
-                pdf.set_x(15)
-                pdf.cell(8, 5, f"{i}.", ln=False)
-                pdf.set_font("Helvetica", "", 9)
-                pdf.multi_cell(167, 5, safe(action))
-                pdf.set_x(15)
-
-            pdf.ln(3)
-
-            # Footer disclaimer
-            pdf.set_font("Helvetica", "I", 7)
-            pdf.set_text_color(120, 120, 120)
-            pdf.multi_cell(180, 4, safe(
-                "This document is for educational purposes only. Projections use simplified assumptions including "
-                "primary-zone promotion timelines, historical TSP fund return averages, and a 4% safe withdrawal rate. "
-                "Actual results will vary. Consult a Certified Financial Planner for personalized advice."))
-
-            # Output
-            pdf_bytes = pdf.output()
-            st.download_button(
-                label="⬇️ Download Your Financial Plan (PDF)",
-                data=bytes(pdf_bytes),
-                file_name=f"military_financial_plan_{datetime.date.today()}.pdf",
-                mime="application/pdf"
-            )
-            st.success("✅ PDF ready — click above to download.")
+            st.metric("Surplus / Deficit", f"${surplus:,.0f}",
+                      delta="On track" if surplus >= 0 else "Needs attention",
+                      delta_color=delta_color)
 
 # --- LOG SESSION ON EXIT (if not already logged via PDF download) ---
 if not st.session_state.session_logged:
