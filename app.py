@@ -7,6 +7,10 @@ import plotly.graph_objects as go
 import matplotlib.pyplot as plt
 import requests
 import io
+import hashlib
+import datetime
+import gspread
+from google.oauth2.service_account import Credentials
 
 # --- 1. CONFIGURATION ---
 st.set_page_config(page_title="F.I.R.E. for Effect", page_icon="🎖️", layout="wide")
@@ -19,7 +23,79 @@ CONFIG = {
     "bas_officer": 360.00,
 }
 
-# Persistent State
+SHEET_ID = "1dFytsNBUepFXsIR4LOXIpsUZfqHfwhO32URiS37m--M"
+
+# --- ANALYTICS ---
+@st.cache_resource
+def get_gsheet():
+    try:
+        creds_dict = json.loads(st.secrets["gcp_service_account"]) \
+            if isinstance(st.secrets["gcp_service_account"], str) \
+            else dict(st.secrets["gcp_service_account"])
+        creds = Credentials.from_service_account_info(
+            creds_dict,
+            scopes=["https://www.googleapis.com/auth/spreadsheets"]
+        )
+        client = gspread.authorize(creds)
+        sheet = client.open_by_key(SHEET_ID).sheet1
+
+        # Write header if sheet is empty
+        if sheet.row_count == 0 or sheet.cell(1, 1).value != "timestamp":
+            sheet.append_row([
+                "timestamp", "anon_id", "zip", "device_type",
+                "session_duration_seconds", "tabs_visited", "max_tab_reached",
+                "monte_carlo_run", "quiz_score", "pdf_downloaded",
+                "bounced", "error_event"
+            ])
+        return sheet
+    except Exception:
+        return None
+
+def get_anon_id():
+    try:
+        ua  = st.context.headers.get("User-Agent", "")
+        raw = ua + st.context.headers.get("Accept-Language", "")
+        return hashlib.sha256(raw.encode()).hexdigest()[:16]
+    except Exception:
+        return "unknown"
+
+def get_device_type():
+    try:
+        ua = st.context.headers.get("User-Agent", "").lower()
+        if any(x in ua for x in ["iphone", "android", "mobile", "ipad"]):
+            return "mobile"
+        return "desktop"
+    except Exception:
+        return "unknown"
+
+def log_session():
+    try:
+        sheet = get_gsheet()
+        if sheet is None:
+            return
+        elapsed = (datetime.datetime.now() - st.session_state.session_start).seconds
+        bounced = 1 if (elapsed < 60 and st.session_state.max_tab_reached <= 1) else 0
+        sheet.append_row([
+            datetime.datetime.now().isoformat(),
+            st.session_state.anon_id,
+            st.session_state.tracked_zip,
+            st.session_state.device_type,
+            elapsed,
+            len(st.session_state.tabs_visited),
+            st.session_state.max_tab_reached,
+            1 if st.session_state.monte_carlo_run else 0,
+            st.session_state.quiz_score,
+            1 if st.session_state.pdf_downloaded else 0,
+            bounced,
+            st.session_state.last_error or ""
+        ])
+    except Exception:
+        pass
+
+def log_error(error_msg):
+    st.session_state.last_error = str(error_msg)[:200]
+
+# --- Persistent State ---
 if "base_pay" not in st.session_state: st.session_state.base_pay = 0.0
 if "bah_amt" not in st.session_state: st.session_state.bah_amt = 0.0
 if "bas_amt" not in st.session_state: st.session_state.bas_amt = 0.0
@@ -34,6 +110,63 @@ if "tab3_invested" not in st.session_state: st.session_state.tab3_invested = 0.0
 if "tab3_guilt_free" not in st.session_state: st.session_state.tab3_guilt_free = 0.0
 if "bah_manual" not in st.session_state: st.session_state.bah_manual = False
 if "les_tsp_actual" not in st.session_state: st.session_state.les_tsp_actual = 0.0
+
+# --- Analytics State ---
+if "consent_given" not in st.session_state: st.session_state.consent_given = False
+if "session_start" not in st.session_state: st.session_state.session_start = datetime.datetime.now()
+if "anon_id" not in st.session_state: st.session_state.anon_id = get_anon_id()
+if "device_type" not in st.session_state: st.session_state.device_type = get_device_type()
+if "tabs_visited" not in st.session_state: st.session_state.tabs_visited = set()
+if "max_tab_reached" not in st.session_state: st.session_state.max_tab_reached = 0
+if "tracked_zip" not in st.session_state: st.session_state.tracked_zip = ""
+if "monte_carlo_run" not in st.session_state: st.session_state.monte_carlo_run = False
+if "quiz_score" not in st.session_state: st.session_state.quiz_score = None
+if "pdf_downloaded" not in st.session_state: st.session_state.pdf_downloaded = False
+if "last_error" not in st.session_state: st.session_state.last_error = ""
+if "session_logged" not in st.session_state: st.session_state.session_logged = False
+
+# --- CONSENT SCREEN ---
+if not st.session_state.consent_given:
+    st.title("🎖️ F.I.R.E. for Effect")
+    st.markdown("""
+**Before you go any further — a quick note from the developer.**
+
+This is the first app I've ever built. I think there's something genuinely useful here, but there's probably more wrong with it than right — and the only way I find that out is by seeing how people actually use it.
+
+So I'm asking your permission to collect some anonymous usage data while you're in the app.
+
+**What I collect:**
+- When you opened the app and how long you stayed
+- What tabs you visited and how far you got
+- Your duty station zip code (if you enter one)
+- Whether you're on a phone or computer
+- Whether you ran the Monte Carlo simulation, completed the financial quiz, or downloaded the PDF
+- Whether anything broke while you were using it
+
+**What I do NOT collect:**
+- Your name, email, rank, TIS, or SSN
+- Anything that could identify you personally
+- Any financial numbers you enter — those never leave your device
+
+**What this lets me do:**
+- See if people are using it or closing it immediately
+- Find where it breaks
+- Understand whether it's spreading or just being perpetually opened by my mom to be nice
+- Decide whether this is worth anything or just adding more trash to the pile
+
+**One more thing:** this is a test, so the link may be dead in a few weeks. If there's something worth saving, I'll build it back better.
+    """)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("✅ Alright, Let's Do This.", type="primary", use_container_width=True):
+            st.session_state.consent_given = True
+            st.rerun()
+    with col2:
+        if st.button("❌ No thanks, close the tab.", use_container_width=True):
+            st.markdown("### No problem. Come back if you change your mind.")
+            st.stop()
+    st.stop()
 
 # ==========================================
 # --- MONTE CARLO HELPER FUNCTIONS ---
@@ -326,6 +459,8 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
 
 # --- TAB 1: INCOME TRUTH ---
 with tab1:
+    st.session_state.tabs_visited.add(1)
+    st.session_state.max_tab_reached = max(st.session_state.max_tab_reached, 1)
     st.header("Step 1: What You Make")
 
     col1, col2 = st.columns(2)
@@ -335,6 +470,7 @@ with tab1:
     with col2:
         zip_code = st.text_input("Duty Station Zip Code", "92136")
         dep = st.checkbox("With Dependents?", value=True)
+        st.session_state.tracked_zip = zip_code
 
     with st.expander("🎖️ Optional Special / Incentive Pays (Monthly)"):
         sp1, sp2 = st.columns(2)
@@ -434,6 +570,8 @@ with tab1:
 
 # --- TAB 2: RETIREMENT ---
 with tab2:
+    st.session_state.tabs_visited.add(2)
+    st.session_state.max_tab_reached = max(st.session_state.max_tab_reached, 2)
     st.header("Step 2: Retirement & Pension Target")
     st.info("💡 **Reality Check:** We'll calculate the single savings rate — as a % of your base pay — that you can plug directly into MyPay and stay on track for your entire career.")
 
@@ -816,6 +954,7 @@ consistency, and discipline.
         """)
 
         if st.button("Run Simulation", type="primary"):
+            st.session_state.monte_carlo_run = True
             with st.spinner("Running 1,000 trials..."):
                 hist_returns, data_source = scrape_and_prep_tsp_data()
 
@@ -917,6 +1056,8 @@ consistency, and discipline.
         """)
 # --- TAB 3: CONSCIOUS SPENDING ---
 with tab3:
+    st.session_state.tabs_visited.add(3)
+    st.session_state.max_tab_reached = max(st.session_state.max_tab_reached, 3)
     st.header("Step 3: Where Does It Go?")
 
     special_pay = st.session_state.get("special_pay", 0.0)
@@ -1228,6 +1369,8 @@ with tab3:
 
 # --- TAB 4: FINLIT QUIZ ---
 with tab4:
+    st.session_state.tabs_visited.add(4)
+    st.session_state.max_tab_reached = max(st.session_state.max_tab_reached, 4)
     st.header("Know the Game: Financial Readiness Quiz")
     st.write("Let's see if you're actually ready to build wealth, or if you're about to become a dealership's favorite customer.")
     
@@ -1319,6 +1462,8 @@ with tab4:
 
 # --- TAB 5: ACTION PLAN ---
 with tab5:
+    st.session_state.tabs_visited.add(5)
+    st.session_state.max_tab_reached = max(st.session_state.max_tab_reached, 5)
     st.header("Way Ahead: Your Financial Order of Operations")
     st.write("Gamifying the classic financial order of operations. Expand each step, execute the mission, and check it off.")
 
@@ -1411,6 +1556,8 @@ with tab5:
 
 # --- TAB 6: FEEDBACK & AAR ---
 with tab6:
+    st.session_state.tabs_visited.add(6)
+    st.session_state.max_tab_reached = max(st.session_state.max_tab_reached, 6)
     st.header("Feedback")
     st.write("Got a question? Found a bug? Want a new feature? Drop it below.")
     
@@ -1428,6 +1575,8 @@ with tab6:
 
 # --- TAB 7: MY FINANCIAL PLAN (PDF) ---
 with tab7:
+    st.session_state.tabs_visited.add(7)
+    st.session_state.max_tab_reached = max(st.session_state.max_tab_reached, 7)
     st.header("📄 Your Plan")
     st.info(
         "**This plan is only as good as the numbers behind it.**\n\n"
@@ -1530,6 +1679,10 @@ with tab7:
         # ── Generate PDF ──────────────────────────────────────────────────────
         st.divider()
         if st.button("📥 Generate & Download PDF", type="primary"):
+            st.session_state.pdf_downloaded = True
+            if not st.session_state.session_logged:
+                st.session_state.session_logged = True
+                log_session()
             from fpdf import FPDF
             import datetime
 
@@ -1652,6 +1805,11 @@ with tab7:
                 mime="application/pdf"
             )
             st.success("✅ PDF ready — click above to download.")
+
+# --- LOG SESSION ON EXIT (if not already logged via PDF download) ---
+if not st.session_state.session_logged:
+    st.session_state.session_logged = True
+    log_session()
 
 # --- GLOBAL FOOTER & DISCLAIMER ---
 st.markdown("---")
