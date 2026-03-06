@@ -7,6 +7,7 @@ import plotly.graph_objects as go
 import matplotlib.pyplot as plt
 import requests
 import io
+import yfinance as yf
 import hashlib
 import datetime
 import gspread
@@ -187,52 +188,50 @@ def generate_mock_tsp_data(months=360):
     data = {fund: np.random.normal(s[0]/12, s[1]/np.sqrt(12), months) for fund, s in stats.items()}
     return pd.DataFrame(data)
 
-@st.cache_data(show_spinner=False, ttl=86400) 
+@st.cache_data(show_spinner=False, ttl=86400)
 def scrape_and_prep_tsp_data():
-    """Attempts to scrape live TSP data. Fails gracefully to synthetic data if blocked."""
-    url = "https://www.tsp.gov/data/fund-price-history.csv"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Accept": "text/csv,application/csv",
-        "Referer": "https://www.tsp.gov/"
+    """Fetches real market data via yfinance using ETF proxies for TSP funds.
+
+    Proxy mapping:
+        C-Fund (S&P 500)    <- SPY
+        S-Fund (Small Cap)  <- VBR
+        I-Fund (International) <- VEA
+        F-Fund (Bonds)      <- BND
+        G-Fund (Treasury)   <- SHV
+    """
+    etf_map = {
+        'C': 'SPY',
+        'S': 'VBR',
+        'I': 'VEA',
+        'F': 'BND',
+        'G': 'SHV',
     }
-
+    ticker_to_fund = {v: k for k, v in etf_map.items()}
     try:
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status() 
+        tickers = list(etf_map.values())
+        data = yf.download(tickers, period="15y", interval="1mo",
+                           auto_adjust=True, progress=False)
+        # For multi-ticker downloads, yfinance returns a MultiIndex DataFrame;
+        # selecting 'Close' gives a flat DataFrame with ticker symbols as columns.
+        raw = data['Close']
 
-        if "<html" in response.text.lower() or "<!doctype html" in response.text.lower():
-            raise ValueError("Firewall blocked request.")
+        # Rename ticker symbols to TSP fund labels (SPY -> C, VBR -> S, etc.)
+        raw = raw.rename(columns=ticker_to_fund)
+        # Keep only the five fund columns in defined order
+        raw = raw[list(etf_map.keys())]
 
-        raw_csv = io.StringIO(response.text)
-        df = pd.read_csv(raw_csv)
-        df.columns = df.columns.str.strip().str.lower()
-        df['date'] = pd.to_datetime(df['date'])
-        df = df.sort_values('date')
-        df.set_index('date', inplace=True)
-
-        core_funds_lower = []
-        for fund in ['c', 's', 'i', 'f', 'g']:
-            if fund in df.columns:
-                core_funds_lower.append(fund)
-            elif f"{fund} fund" in df.columns:
-                df.rename(columns={f"{fund} fund": fund}, inplace=True)
-                core_funds_lower.append(fund)
-
-        for col in core_funds_lower:
-            if df[col].dtype == object:
-                df[col] = df[col].astype(str).str.replace(',', '').astype(float)
-
-        monthly_prices = df[core_funds_lower].resample('ME').last()
-        monthly_returns = monthly_prices.pct_change()
+        monthly_returns = raw.pct_change()
         monthly_returns.replace([np.inf, -np.inf], np.nan, inplace=True)
         monthly_returns = monthly_returns.dropna()
-        monthly_returns.columns = ['C', 'S', 'I', 'F', 'G']
+
+        if monthly_returns.empty or len(monthly_returns) < 12:
+            raise ValueError("Insufficient data returned from yfinance.")
+
         return monthly_returns, "Live"
 
     except Exception as e:
         # Failsafe: return the high-fidelity synthetic data so the app NEVER crashes
-        return generate_mock_tsp_data(), "Proxy"
+        return generate_mock_tsp_data(), f"Proxy: {type(e).__name__}"
 
 def get_lifecycle_allocation(years_to_retire):
     if years_to_retire > 20: return {'C': 0.50, 'S': 0.25, 'I': 0.25, 'F': 0.0, 'G': 0.0}
@@ -969,8 +968,8 @@ consistency, and discipline.
             with st.spinner("Running 1,000 trials..."):
                 hist_returns, data_source = scrape_and_prep_tsp_data()
 
-                if data_source == "Proxy":
-                    st.warning("⚠️ TSP.gov blocked direct access. Running on high-fidelity historical proxy data.")
+                if data_source != "Live":
+                    st.warning(f"⚠️ Could not fetch live market data via yfinance ({data_source}). Running on high-fidelity synthetic proxy data.")
 
                 sim_results = run_real_monte_carlo(
                     current_age, age_at_retire, current_tsp,
