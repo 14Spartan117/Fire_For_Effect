@@ -179,7 +179,7 @@ So I'm asking your permission to collect some anonymous usage data while you're 
 
 def generate_mock_tsp_data(months=360):
     """Fallback high-fidelity proxy data if the TSP scraper gets blocked by firewalls."""
-    np.random.seed(42)
+    # No fixed seed - each run generates different random data to reflect true Monte Carlo variability
     stats = {
         'C': [0.105, 0.15], 'S': [0.110, 0.18], 'I': [0.075, 0.17], 
         'F': [0.040, 0.05], 'G': [0.028, 0.01]
