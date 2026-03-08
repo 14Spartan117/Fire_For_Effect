@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>F.I.R.E. for Effect — Architecture</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0c0e14;
+    --surface: #141722;
+    --surface-raised: #1a1e2e;
+    --surface-hover: #1f2438;
+    --border: #2a2f42;
+    --border-bright: #3a4060;
+    --text: #e8eaf0;
+    --text-dim: #8890a8;
+    --text-muted: #5a6280;
+    --accent-fire: #ff6b35;
+    --accent-ember: #ff9f1c;
+    --accent-gold: #ffd166;
+    --accent-teal: #06d6a0;
+    --accent-blue: #4ea8de;
+    --accent-purple: #b388ff;
+    --accent-red: #ff6b6b;
+    --accent-pink: #f472b6;
+    --layer-infra: #ff6b35;
+    --layer-model: #06d6a0;
+    --layer-state: #ffd166;
+    --layer-app: #4ea8de;
+    --layer-ui: #b388ff;
+    --layer-util: #f472b6;
+    --glow-infra: rgba(255, 107, 53, 0.12);
+    --glow-model: rgba(6, 214, 160, 0.12);
+    --glow-state: rgba(255, 209, 102, 0.1);
+    --glow-app: rgba(78, 168, 222, 0.12);
+    --glow-ui: rgba(179, 136, 255, 0.1);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  .grain {
+    position: fixed; inset: 0; pointer-events: none; z-index: 999;
+    opacity: 0.03;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .canvas {
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: 48px 40px 64px;
+    position: relative;
+  }
+
+  /* HEADER */
+  .header {
+    text-align: center;
+    margin-bottom: 56px;
+    position: relative;
+  }
+  .header::after {
+    content: '';
+    position: absolute;
+    bottom: -28px; left: 50%;
+    transform: translateX(-50%);
+    width: 200px; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent-fire), transparent);
+  }
+  .header h1 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 40px;
+    font-weight: 700;
+    letter-spacing: 6px;
+    background: linear-gradient(135deg, var(--accent-fire), var(--accent-ember), var(--accent-gold));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 12px;
+  }
+  .header .subtitle {
+    font-size: 13px;
+    color: var(--text-muted);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    font-weight: 400;
+  }
+  .tech-stack {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+  }
+  .tech-pill {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    letter-spacing: 0.5px;
+    background: var(--surface);
+  }
+
+  /* LAYER SECTIONS */
+  .layer {
+    margin-bottom: 28px;
+    position: relative;
+    animation: fadeUp 0.6s ease-out both;
+  }
+  .layer:nth-child(2) { animation-delay: 0.1s; }
+  .layer:nth-child(3) { animation-delay: 0.2s; }
+  .layer:nth-child(4) { animation-delay: 0.3s; }
+  .layer:nth-child(5) { animation-delay: 0.4s; }
+  .layer:nth-child(6) { animation-delay: 0.5s; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .layer-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    font-weight: 600;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .layer-label .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .layer-label .line {
+    flex: 1; height: 1px;
+    background: var(--border);
+  }
+
+  /* CARDS GRID */
+  .cards {
+    display: grid;
+    gap: 12px;
+  }
+  .cards-3 { grid-template-columns: repeat(3, 1fr); }
+  .cards-4 { grid-template-columns: repeat(4, 1fr); }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 20px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.3s, transform 0.2s, box-shadow 0.3s;
+  }
+  .card:hover {
+    border-color: var(--border-bright);
+    transform: translateY(-2px);
+  }
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    border-radius: 10px 10px 0 0;
+  }
+
+  .card-infra::before { background: var(--layer-infra); }
+  .card-infra:hover { box-shadow: 0 4px 24px var(--glow-infra); }
+  .card-model::before { background: var(--layer-model); }
+  .card-model:hover { box-shadow: 0 4px 24px var(--glow-model); }
+  .card-state::before { background: var(--layer-state); }
+  .card-state:hover { box-shadow: 0 4px 24px var(--glow-state); }
+  .card-app::before { background: var(--layer-app); }
+  .card-app:hover { box-shadow: 0 4px 24px var(--glow-app); }
+  .card-ui::before { background: var(--layer-ui); }
+  .card-ui:hover { box-shadow: 0 4px 24px var(--glow-ui); }
+  .card-util::before { background: var(--layer-util); }
+  .card-util:hover { box-shadow: 0 4px 24px rgba(244, 114, 182, 0.12); }
+
+  .card-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-title .tab-num {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+  }
+  .tab-num-infra { background: rgba(255,107,53,0.15); color: var(--layer-infra); }
+  .tab-num-model { background: rgba(6,214,160,0.15); color: var(--layer-model); }
+  .tab-num-ui { background: rgba(179,136,255,0.15); color: var(--layer-ui); }
+  .tab-num-util { background: rgba(244,114,182,0.15); color: var(--layer-util); }
+
+  .card-body {
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--text-dim);
+  }
+  .card-body .fn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--accent-teal);
+  }
+  .card-body .detail {
+    color: var(--text-muted);
+    font-size: 11px;
+    padding-left: 14px;
+    position: relative;
+  }
+  .card-body .detail::before {
+    content: '→';
+    position: absolute;
+    left: 0;
+    color: var(--text-muted);
+    font-size: 10px;
+  }
+  .card-body .const {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--accent-ember);
+  }
+  .card-body .writes {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--accent-blue);
+    letter-spacing: 0.3px;
+  }
+  .card-body .writes::before {
+    content: '↳ writes ';
+    color: var(--text-muted);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /* SESSION STATE BUS */
+  .state-bus {
+    background: var(--surface);
+    border: 1px solid rgba(255, 209, 102, 0.25);
+    border-radius: 12px;
+    padding: 24px 28px;
+    position: relative;
+    overflow: hidden;
+  }
+  .state-bus::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent-fire), var(--accent-gold), var(--accent-teal));
+  }
+  .state-bus-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--layer-state);
+    letter-spacing: 2px;
+    margin-bottom: 16px;
+  }
+  .state-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  .state-col h4 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    margin-bottom: 8px;
+    letter-spacing: 1px;
+  }
+  .state-col.financial h4 { color: var(--accent-teal); }
+  .state-col.analytics h4 { color: var(--accent-purple); }
+  .state-keys {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .state-key {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    background: var(--surface-raised);
+  }
+
+  /* APP ENTRY */
+  .app-entry {
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 24px;
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--text-dim);
+    position: relative;
+  }
+  .app-entry .highlight {
+    color: var(--accent-blue);
+    font-weight: 600;
+  }
+  .app-entry .sep {
+    color: var(--text-muted);
+    margin: 0 6px;
+  }
+
+  /* FLOW CONNECTORS */
+  .connector {
+    display: flex;
+    justify-content: center;
+    padding: 8px 0;
+  }
+  .connector .arrow {
+    width: 1px;
+    height: 24px;
+    background: linear-gradient(180deg, var(--border-bright), var(--border));
+    position: relative;
+  }
+  .connector .arrow::after {
+    content: '';
+    position: absolute;
+    bottom: -4px; left: -3px;
+    width: 7px; height: 7px;
+    border-right: 1px solid var(--border-bright);
+    border-bottom: 1px solid var(--border-bright);
+    transform: rotate(45deg);
+  }
+
+  /* TABS GRID */
+  .tabs-main {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .tabs-secondary {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+
+  /* LEGEND */
+  .legend {
+    margin-top: 32px;
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+  }
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+  }
+
+  /* FOOTER */
+  .footer {
+    text-align: center;
+    margin-top: 40px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+    line-height: 1.8;
+  }
+
+  /* RESPONSIVE */
+  @media (max-width: 1100px) {
+    .cards-4, .tabs-main, .tabs-secondary { grid-template-columns: repeat(2, 1fr); }
+    .cards-3 { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 640px) {
+    .cards-4, .cards-3, .tabs-main, .tabs-secondary, .state-columns {
+      grid-template-columns: 1fr;
+    }
+    .canvas { padding: 24px 16px; }
+    .header h1 { font-size: 28px; letter-spacing: 3px; }
+  }
+</style>
+</head>
+<body>
+<div class="grain"></div>
+<div class="canvas">
+
+  <!-- HEADER -->
+  <div class="header">
+    <h1>F.I.R.E. FOR EFFECT</h1>
+    <div class="subtitle">Project Architecture</div>
+    <div class="tech-stack">
+      <span class="tech-pill">Streamlit</span>
+      <span class="tech-pill">Python 3.11</span>
+      <span class="tech-pill">yfinance</span>
+      <span class="tech-pill">fpdf2</span>
+      <span class="tech-pill">Google Sheets</span>
+    </div>
+  </div>
+
+  <!-- INFRASTRUCTURE -->
+  <div class="layer">
+    <div class="layer-label" style="color: var(--layer-infra);">
+      <span class="dot" style="background: var(--layer-infra);"></span>
+      INFRASTRUCTURE
+      <span class="line"></span>
+    </div>
+    <div class="cards cards-3">
+      <div class="card card-infra">
+        <div class="card-title">config.py</div>
+        <div class="card-body">
+          <div class="const">FUND_NOMINAL_RATES</div>
+          <div class="detail">C:11.3% S:9.4% I:6.3% F:5.4% G:4.7%</div>
+          <br>
+          <div class="const">PROMOTION_TIMELINE</div>
+          <div class="detail">E-1 → O-7</div>
+          <br>
+          <div class="const">PROGRESSION</div>
+          <div class="detail">chains (E / O / W)</div>
+          <br>
+          <span class="const">BAS rates</span> · <span class="const">SHEET_ID</span> <span style="color:var(--text-muted)">(analytics)</span>
+        </div>
+      </div>
+      <div class="card card-infra">
+        <div class="card-title">data/loader.py</div>
+        <div class="card-body">
+          <div class="fn">load_military_data()</div>
+          <div class="detail">→ military_data.json</div>
+          <br>
+          <div><span class="fn">get_base_pay</span>(rank, tis) → <span style="color:var(--text-muted)">float</span></div>
+          <div><span class="fn">get_bah_rate</span>(mha, rank, dep) → <span style="color:var(--text-muted)">float</span></div>
+          <div><span class="fn">get_bas</span>(rank_type) → <span style="color:var(--text-muted)">float</span></div>
+          <br>
+          <div class="detail">@st.cache_data · Path(__file__) safe</div>
+        </div>
+      </div>
+      <div class="card card-infra">
+        <div class="card-title">analytics/tracking.py</div>
+        <div class="card-body">
+          <div><span class="fn">get_anon_id()</span> <span style="color:var(--text-muted)">SHA-256, no PII</span></div>
+          <div><span class="fn">get_device_type()</span> <span style="color:var(--text-muted)">mobile | desktop</span></div>
+          <div><span class="fn">log_session()</span> <span style="color:var(--text-muted)">→ gspread → Sheets</span></div>
+          <br>
+          <div class="detail">Fires once on PDF download</div>
+          <div class="detail">consent_given flag gates all logs</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <!-- MODELS -->
+  <div class="layer">
+    <div class="layer-label" style="color: var(--layer-model);">
+      <span class="dot" style="background: var(--layer-model);"></span>
+      MODELS
+      <span class="line"></span>
+    </div>
+    <div class="cards cards-4">
+      <div class="card card-model">
+        <div class="card-title">allocations.py</div>
+        <div class="card-body">
+          <div class="fn">get_lifecycle_allocation(yrs)</div>
+          <div class="detail">&gt;20yr: C70 S20 I10</div>
+          <div class="detail">&gt;10yr: C40 F20 G10</div>
+          <div class="detail">&gt; 0yr: C20 F30 G40</div>
+          <br>
+          <div class="fn">get_blended_nominal_return()</div>
+          <div class="fn">get_time_weighted_blended_return()</div>
+          <div class="detail">glide-path-aware solver align</div>
+        </div>
+      </div>
+      <div class="card card-model">
+        <div class="card-title">projections.py</div>
+        <div class="card-body">
+          <div class="fn">get_progression_chain(rank)</div>
+          <div class="detail">enlisted / officer / warrant</div>
+          <br>
+          <div class="fn">build_monthly_base_pay_schedule()</div>
+          <div class="detail">→ income[] with promotions</div>
+          <br>
+          <div class="fn">solve_savings_rate(target, r, mo)</div>
+          <div class="detail">→ PMT solver ($/month to FIRE)</div>
+        </div>
+      </div>
+      <div class="card card-model">
+        <div class="card-title">pension.py</div>
+        <div class="card-body">
+          <div class="fn">calc_high3_pension(</div>
+          <div style="padding-left:14px;"><span style="color:var(--text-muted)">rank, yrs, multiplier</span></div>
+          <div class="fn">)</div>
+          <br>
+          <div class="detail">avg(pay at yrs-3, yrs-2, yrs-1)</div>
+          <div class="detail">× YOS × multiplier</div>
+          <br>
+          <div class="detail">Lookback via PROMOTION_TIMELINE</div>
+        </div>
+      </div>
+      <div class="card card-model">
+        <div class="card-title">monte_carlo.py</div>
+        <div class="card-body">
+          <div class="fn">scrape_and_prep_tsp_data()</div>
+          <div class="detail">TSP.gov (primary / 403 blocked)</div>
+          <div class="detail">yfinance ETF proxies (fallback)</div>
+          <div style="padding-left:14px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-muted)">C~SPY S~VXF I~EFA F~AGG G~SHY</div>
+          <div class="detail">@st.cache_data ttl=24h</div>
+          <br>
+          <div class="fn">run_real_monte_carlo()</div>
+          <div class="detail">1,000 bootstrap trials</div>
+          <div class="detail">→ percentile band chart</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <!-- SESSION STATE -->
+  <div class="layer">
+    <div class="layer-label" style="color: var(--layer-state);">
+      <span class="dot" style="background: var(--layer-state);"></span>
+      STREAMLIT SESSION STATE
+      <span class="line"></span>
+      <span style="font-size:9px;color:var(--text-muted);letter-spacing:1px;">SHARED DATA BUS</span>
+    </div>
+    <div class="state-bus">
+      <div class="state-columns">
+        <div class="state-col financial">
+          <h4>Financial Keys</h4>
+          <div class="state-keys">
+            <span class="state-key">base_pay</span>
+            <span class="state-key">bah_amt</span>
+            <span class="state-key">bas_amt</span>
+            <span class="state-key">tab1_rank</span>
+            <span class="state-key">tab1_tis</span>
+            <span class="state-key">pmt_target</span>
+            <span class="state-key">nest_egg_target</span>
+            <span class="state-key">est_pension</span>
+            <span class="state-key">mc_success_rate</span>
+            <span class="state-key">savings_rate_pct</span>
+            <span class="state-key">tab3_take_home</span>
+            <span class="state-key">tab3_fixed</span>
+            <span class="state-key">tab3_invested</span>
+            <span class="state-key">tab3_guilt_free</span>
+          </div>
+        </div>
+        <div class="state-col analytics">
+          <h4>Analytics Keys</h4>
+          <div class="state-keys">
+            <span class="state-key">consent_given</span>
+            <span class="state-key">anon_id</span>
+            <span class="state-key">device_type</span>
+            <span class="state-key">tabs_visited</span>
+            <span class="state-key">max_tab_reached</span>
+            <span class="state-key">tracked_zip</span>
+            <span class="state-key">monte_carlo_run</span>
+            <span class="state-key">quiz_score</span>
+            <span class="state-key">pdf_downloaded</span>
+            <span class="state-key">session_logged</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <!-- APP ENTRY -->
+  <div class="layer">
+    <div class="layer-label" style="color: var(--layer-app);">
+      <span class="dot" style="background: var(--layer-app);"></span>
+      APP ENTRY
+      <span class="line"></span>
+    </div>
+    <div class="app-entry">
+      <span class="highlight">app.py</span>
+      <span class="sep">→</span>
+      init_session_state()
+      <span class="sep">|</span>
+      st.tabs()
+      <span class="sep">|</span>
+      render_tab_*()
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <!-- UI LAYER -->
+  <div class="layer">
+    <div class="layer-label" style="color: var(--layer-ui);">
+      <span class="dot" style="background: var(--layer-ui);"></span>
+      UI LAYER
+      <span class="line"></span>
+    </div>
+    <div class="tabs-main">
+      <!-- Tab 1 -->
+      <div class="card card-ui">
+        <div class="card-title">
+          <span class="tab-num tab-num-ui">TAB 1</span>
+          tab_income.py
+        </div>
+        <div class="card-body">
+          Rank + TIS selectors<br>
+          BAH zip → MHA lookup<br>
+          BAS enlisted / officer
+          <div class="writes">ss.base_pay · ss.tab1_rank · ss.tab1_tis</div>
+        </div>
+      </div>
+      <!-- Tab 2 -->
+      <div class="card card-ui">
+        <div class="card-title">
+          <span class="tab-num tab-num-ui">TAB 2</span>
+          tab_retirement.py
+        </div>
+        <div class="card-body">
+          FIRE solver (PMT-based)<br>
+          High-3 pension estimator<br>
+          Monte Carlo 1,000-trial chart
+          <div class="writes">ss.pmt_target · ss.nest_egg_target</div>
+        </div>
+      </div>
+      <!-- Tab 3 -->
+      <div class="card card-ui">
+        <div class="card-title">
+          <span class="tab-num tab-num-ui">TAB 3</span>
+          tab_budget.py
+        </div>
+        <div class="card-body">
+          LES mode vs Algorithm mode<br>
+          Fixed / Invested / Guilt-Free<br>
+          Sankey cash-flow chart (Plotly)
+          <div class="writes">ss.tab3_take_home · ss.tab3_fixed</div>
+        </div>
+      </div>
+      <!-- Tab 4 -->
+      <div class="card card-ui">
+        <div class="card-title">
+          <span class="tab-num tab-num-ui">TAB 4</span>
+          tab_quiz.py
+        </div>
+        <div class="card-body">
+          Financial literacy quiz<br>
+          8 scored questions<br>
+          Instant feedback / Session State
+          <div class="writes">ss.quiz_score</div>
+        </div>
+      </div>
+    </div>
+    <div class="tabs-secondary">
+      <!-- Tab 5 -->
+      <div class="card card-ui">
+        <div class="card-title">
+          <span class="tab-num tab-num-ui">TAB 5</span>
+          tab_action.py
+        </div>
+        <div class="card-body">
+          Way Ahead: Order of Operations<br>
+          9-step gamified checklist<br>
+          BRS / SCRA / HYSA / TSP / GI Bill<br>
+          Mission progress bar
+        </div>
+      </div>
+      <!-- Tab 6 -->
+      <div class="card card-ui">
+        <div class="card-title">
+          <span class="tab-num tab-num-ui">TAB 6</span>
+          tab_feedback.py
+        </div>
+        <div class="card-body">
+          User feedback form<br>
+          Free-text input<br>
+          Posted to Google Sheets
+        </div>
+      </div>
+      <!-- Tab 7 -->
+      <div class="card card-ui">
+        <div class="card-title">
+          <span class="tab-num tab-num-ui">TAB 7</span>
+          tab_plan.py
+        </div>
+        <div class="card-body">
+          Income + retirement + budget snapshot<br>
+          On-track vs shortfall view<br>
+          PDF export (fpdf2)
+          <div class="writes">ss.pdf_downloaded · log_session()</div>
+        </div>
+      </div>
+      <!-- Utilities -->
+      <div class="card card-util">
+        <div class="card-title">
+          <span class="tab-num tab-num-util">UTIL</span>
+          ui/state.py · consent.py
+        </div>
+        <div class="card-body">
+          init_session_state() — all defaults<br>
+          consent.py opt-in analytics gate<br>
+          __init__.py re-exports render fns<br>
+          <span style="color:var(--accent-pink);font-size:11px;">Runs before any tab renders</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LEGEND -->
+  <div class="legend">
+    <div class="legend-item"><span class="legend-dot" style="background:var(--layer-infra)"></span>Infrastructure</div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--layer-model)"></span>Models</div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--layer-state)"></span>Session State</div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--layer-app)"></span>App Entry</div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--layer-ui)"></span>UI Tabs</div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--layer-util)"></span>Utilities</div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    No user data stored server-side · Analytics use anonymous session IDs only · For educational use
+  </div>
+
+</div>
+</body>
+</html>
