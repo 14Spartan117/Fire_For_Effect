@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Secrets / credentials
+.env
+.streamlit/secrets.toml
+credentials.json
+service_account.json
+
+# macOS
+.DS_Store
+
+# Generator script (dev utility only)
+gen_arch.py

@@ -1,0 +1,297 @@
+"""
+Tab 1 -- What Do You Make?
+"""
+
+import numpy as np
+import plotly.graph_objects as go
+import streamlit as st
+
+from config import RANKS, PROMOTION_TIMELINE, BAS_OFFICER, BAS_ENLISTED
+from data import get_military_pay, DATA
+from models.projections import get_progression_chain
+
+
+def render_tab_income(container):
+    with container:
+        ss = st.session_state
+        ss.tabs_visited.add(1)
+        ss.max_tab_reached = max(ss.max_tab_reached, 1)
+        st.header("Step 1: What You Make")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            rank = st.selectbox("Current Rank", RANKS, index=4, key="tab1_rank_widget")
+            tis = st.number_input("Years of Service (TIS)", 0, 40, 4)
+        with col2:
+            zip_code = st.text_input("Duty Station Zip Code", "92136")
+            dep = st.checkbox("With Dependents?", value=True)
+            ss.tracked_zip = zip_code
+
+        # ── Optional special / incentive pays ─────────────────────────────────
+        with st.expander("\U0001F396\uFE0F Optional Special / Incentive Pays (Monthly)"):
+            sp1, sp2 = st.columns(2)
+            with sp1:
+                hdip_static = st.checkbox("HDIP: Parachute (Static Line) (+$150)")
+                hdip_mff = st.checkbox("HDIP: Military Free Fall / HALO (+$225)")
+                hdip_demo = st.checkbox("HDIP: Demolition (+$150)")
+            with sp2:
+                hfp_idp = st.checkbox("Hostile Fire / Imminent Danger Pay (up to +$225)")
+                flpb_on = st.checkbox("Foreign Language Proficiency Bonus (FLPB)")
+                avip_on = st.checkbox("Aviation Incentive Pay (Army Officer AvIP)")
+
+            flpb_amt = 0
+            if flpb_on:
+                flpb_amt = st.number_input(
+                    "FLPB monthly amount (enter your known amount from orders/LES)",
+                    min_value=0, max_value=1000, value=0, step=50,
+                )
+
+            avip_amt = 0
+            if avip_on:
+                yas = st.number_input(
+                    "Years of Aviation Service (YAS)",
+                    min_value=0.0, max_value=40.0, value=2.0, step=0.5,
+                )
+                if yas <= 2:
+                    avip_amt = 125
+                elif yas <= 6:
+                    avip_amt = 200
+                elif yas <= 10:
+                    avip_amt = 700
+                elif yas <= 22:
+                    avip_amt = 1000
+                elif yas <= 24:
+                    avip_amt = 700
+                else:
+                    avip_amt = 400
+
+            dive_on = st.checkbox("Diving Duty Pay")
+            dive_amt = 0
+            if dive_on:
+                dive_category = st.selectbox("Dive category (Army)", [
+                    "Under instruction at approved dive school ($110)",
+                    "Combat Diver ($215)",
+                    "Diver Second Class ($150)",
+                    "Salvage Diver ($175)",
+                    "Diver First Class ($215)",
+                    "Master Diver ($340)",
+                    "Officer: Marine Diving Officer ($240)",
+                    "Officer: Diving Medical Officer ($215)",
+                ])
+                dive_map = {
+                    "Under instruction at approved dive school ($110)": 110,
+                    "Combat Diver ($215)": 215,
+                    "Diver Second Class ($150)": 150,
+                    "Salvage Diver ($175)": 175,
+                    "Diver First Class ($215)": 215,
+                    "Master Diver ($340)": 340,
+                    "Officer: Marine Diving Officer ($240)": 240,
+                    "Officer: Diving Medical Officer ($215)": 215,
+                }
+                dive_amt = dive_map.get(dive_category, 0)
+
+            sdap_on = st.checkbox("Special Duty Assignment Pay (SDAP) (Recruiter/Drill/etc.)")
+            sdap_amt = 0
+            if sdap_on:
+                sdap_amt = st.number_input(
+                    "SDAP monthly amount", min_value=0, max_value=1000, value=0, step=25,
+                )
+
+        special_pay = 0
+        if hdip_static:
+            special_pay += 150
+        if hdip_mff:
+            special_pay += 225
+        if hdip_demo:
+            special_pay += 150
+        if hfp_idp:
+            special_pay += 225
+        special_pay += flpb_amt
+        special_pay += avip_amt
+        special_pay += dive_amt
+        special_pay += sdap_amt
+
+        st.divider()
+
+        # ── Calculate pay ─────────────────────────────────────────────────────
+        zip_found = DATA.get("zip_to_mha", {}).get(zip_code) is not None
+
+        if zip_found:
+            base, bas, bah = get_military_pay(rank, tis, zip_code, dep)
+            ss.bah_manual = False
+        else:
+            base, bas, _ = get_military_pay(rank, tis, "92136", dep)
+            st.warning(
+                f"\u26A0\uFE0F Zip code **{zip_code}** was not found in the BAH database. "
+                "Make sure you're entering your **duty station** zip code, not your home address. "
+                "If your zip is correct and still not found, enter your BAH manually below."
+            )
+            bah = st.number_input(
+                "Manual BAH Entry ($/month)", min_value=0.0, step=50.0, key="manual_bah_input"
+            )
+            ss.bah_manual = True
+
+        ss.base_pay = base
+        ss.bas_amt = bas
+        ss.bah_amt = bah
+        ss.special_pay = special_pay
+        ss.tab1_rank = rank
+        ss.tab1_tis = tis
+
+        gross = base + bas + bah + special_pay
+        annual_gross = gross * 12
+
+        col_monthly, col_annual = st.columns(2)
+        with col_monthly:
+            st.info(f"### \U0001F5D3\uFE0F Monthly Gross\n# ${gross:,.2f}")
+        with col_annual:
+            st.success(f"### \U0001F4B0 Annual Gross\n# ${annual_gross:,.2f}")
+
+        st.write("")
+        c_a, c_b, c_c, c_d = st.columns(4)
+        c_a.metric("Base Pay", f"${base:,.2f}")
+        c_b.metric("BAH (Tax-Free)", f"${bah:,.2f}")
+        c_c.metric("BAS (Tax-Free)", f"${bas:,.2f}")
+        c_d.metric("Special Pays", f"${special_pay:,.2f}")
+
+        # ── Projected Annual Compensation Chart ─────────────────────────────
+        st.divider()
+        st.subheader("Projected Annual Compensation by Year of Service")
+
+        with st.expander("Model assumptions"):
+            st.markdown("""
+- Projection runs from your current **TIS** through **20 years of service**
+- **BAH changes with projected rank**, using your current **duty-station ZIP** and dependent status
+- **BAS** changes only if you cross between enlisted/officer/warrant categories
+- **Special pays are held constant** at the values you entered above
+- Promotion timing uses the app's built-in **typical promotion timeline**
+- **Terminal rank caps:** Officers project to O-5, Warrant Officers to W-5, Enlisted to E-7
+- This is an illustrative model, not a prediction of your exact career
+            """)
+
+        def get_projection_terminal_rank(start_rank):
+            if start_rank in ("O-1E", "O-2E", "O-3E"):
+                return "O-4"
+            if start_rank.startswith("O"):
+                return "O-5"
+            if start_rank.startswith("W"):
+                return "W-5"
+            return "E-7"
+
+        def project_rank_by_tis(start_rank, tis_value):
+            chain = get_progression_chain(start_rank)
+            terminal_rank = get_projection_terminal_rank(start_rank)
+            if terminal_rank not in chain:
+                terminal_idx = len(chain) - 1
+            else:
+                terminal_idx = chain.index(terminal_rank)
+            current_rank = chain[0]
+            for r in chain[:terminal_idx + 1]:
+                if tis_value >= PROMOTION_TIMELINE.get(r, 999):
+                    current_rank = r
+                else:
+                    break
+            return current_rank
+
+        proj_start_tis = int(np.ceil(tis))
+        proj_end_tis = 20
+
+        if proj_start_tis > proj_end_tis:
+            st.info("Projection chart is only shown for users below 20 years of service.")
+        else:
+            projection_rows = []
+            for tis_year in range(proj_start_tis, proj_end_tis + 1):
+                projected_rank = project_rank_by_tis(rank, tis_year)
+                if ss.bah_manual:
+                    from data.loader import get_base_pay as _get_bp
+                    proj_base = _get_bp(projected_rank, tis_year)
+                    from config import BAS_OFFICER, BAS_ENLISTED
+                    proj_bas = BAS_OFFICER if ("O" in projected_rank or "W" in projected_rank) else BAS_ENLISTED
+                    proj_bah = bah
+                else:
+                    proj_base, proj_bas, proj_bah = get_military_pay(
+                        projected_rank, tis_year, zip_code, dep
+                    )
+                annual_base = proj_base * 12
+                annual_bas = proj_bas * 12
+                annual_bah = proj_bah * 12
+                annual_special = special_pay * 12
+                annual_total = annual_base + annual_bas + annual_bah + annual_special
+                projection_rows.append({
+                    "TIS": tis_year,
+                    "Projected Rank": projected_rank,
+                    "Base Pay": annual_base,
+                    "BAS": annual_bas,
+                    "BAH": annual_bah,
+                    "Special Pays": annual_special,
+                    "Total Compensation": annual_total,
+                })
+
+            import pandas as pd
+            proj_df = pd.DataFrame(projection_rows)
+
+            COMP_COLORS = {
+                "Base Pay": "#4C9BE8",
+                "BAH": "#F0A500",
+                "BAS": "#3ABFAB",
+                "Special Pays": "#E8654C",
+            }
+
+            has_special = proj_df["Special Pays"].sum() > 0
+            components = ["Base Pay", "BAH", "BAS"]
+            if has_special:
+                components.append("Special Pays")
+
+            fig_proj = go.Figure()
+            for component in components:
+                fig_proj.add_trace(go.Bar(
+                    x=proj_df["TIS"],
+                    y=proj_df[component],
+                    name=component,
+                    marker_color=COMP_COLORS[component],
+                    customdata=np.stack([
+                        proj_df["Projected Rank"],
+                        proj_df["Total Compensation"],
+                    ], axis=-1),
+                    hovertemplate=(
+                        "<b>TIS %{x}  ·  %{customdata[0]}</b><br>"
+                        f"{component}: $%{{y:,.0f}}<br>"
+                        "Total: $%{customdata[1]:,.0f}<extra></extra>"
+                    ),
+                ))
+
+            # Promotion milestone annotations
+            prev_rank = proj_df["Projected Rank"].iloc[0]
+            for _, row_data in proj_df.iterrows():
+                cur_rank = row_data["Projected Rank"]
+                if cur_rank != prev_rank:
+                    fig_proj.add_vline(
+                        x=row_data["TIS"] - 0.5,
+                        line_width=1.2, line_dash="dot",
+                        line_color="rgba(255,255,255,0.25)",
+                    )
+                    fig_proj.add_annotation(
+                        x=row_data["TIS"],
+                        y=row_data["Total Compensation"] * 1.04,
+                        text=f"↑ {cur_rank}",
+                        showarrow=False,
+                        font=dict(size=10, color="#F0A500"),
+                        xanchor="center",
+                    )
+                    prev_rank = cur_rank
+
+            fig_proj.update_layout(
+                barmode="stack", height=440,
+                plot_bgcolor="#0e1117", paper_bgcolor="#0e1117",
+                font=dict(color="#fafafa", family="sans-serif"),
+                margin=dict(l=60, r=20, t=20, b=50),
+                xaxis=dict(title="Years of Service (TIS)", tickmode="linear", dtick=1,
+                           gridcolor="#1e2130", linecolor="#2a2a3e", tickfont=dict(size=11)),
+                yaxis=dict(title="Annual Compensation ($)", tickformat="$,.0f",
+                           gridcolor="#1e2130", linecolor="#2a2a3e"),
+                legend=dict(orientation="v", yanchor="bottom", y=0.04, xanchor="right", x=0.99,
+                            bgcolor="rgba(14,17,23,0.7)", bordercolor="#2a2a3e", borderwidth=1,
+                            font=dict(size=11)),
+                bargap=0.18,
+            )
+            st.plotly_chart(fig_proj, use_container_width=True)
